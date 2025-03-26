@@ -1,3 +1,28 @@
+<?php
+    session_start();
+    // Add cache control headers
+    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    header("Cache-Control: post-check=0, pre-check=0", false);
+    header("Pragma: no-cache");
+
+    if(isset($_SESSION["user"])){
+        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='d'){
+            header("location: ../login.php");
+        }else{
+            $useremail=$_SESSION["user"];
+        }
+    }else{
+        header("location: ../login.php");
+    }
+    
+    include("../connection.php");
+    include("includes/functions.php");
+    
+    $userrow = $database->query("select * from doctor where docemail='$useremail'");
+    $userfetch=$userrow->fetch_assoc();
+    $userid= $userfetch["docid"];
+    $username=$userfetch["docname"];
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,102 +33,30 @@
     <link rel="stylesheet" href="../css/main.css">  
     <link rel="stylesheet" href="../css/admin.css">
         
-    <title>Patient</title>
+    <title>Patients</title>
     <style>
-        .popup{
-            animation: transitionIn-Y-bottom 0.5s;
+        .dashbord-tables{
+            animation: transitionIn-Y-over 0.5s;
+        }
+        .filter-container{
+            animation: transitionIn-X  0.5s;
         }
         .sub-table{
             animation: transitionIn-Y-bottom 0.5s;
         }
-</style>
+    </style>
 </head>
 <body>
-    <?php
-
-    session_start();
-
-    if(isset($_SESSION["user"])){
-        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='d'){
-            header("location: ../login.php");
-        }else{
-            $useremail=$_SESSION["user"];
-        }
-
-    }else{
-        header("location: ../login.php");
-    }
-    
-
-    //import database
-    include("../connection.php");
-    $userrow = $database->query("select * from doctor where docemail='$useremail'");
-    $userfetch=$userrow->fetch_assoc();
-    $userid= $userfetch["docid"];
-    $username=$userfetch["docname"];
-
-    ?>
     <div class="container">
-    
-    <?php include("../header.php"); ?>
-
-        <?php       
-
-                    $selecttype="My";
-                    $current="My patient Only";
-                    
-                    if($_POST){
-
-                        if(isset($_POST["search"])){
-                            $keyword=$_POST["search12"];
-                            
-                            $sqlmain= "select appointment.*, patient.*, schedule.*, department.description as deptDescription, semester.description as semesterDescription from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid 
-                            inner join department on department.id = patient.paddress
-                            inner join semester on semester.id = patient.ptel where where pemail like '%$keyword%' or pnic like '%$keyword%' or department.description like '%$keyword%' or semester.description like '%$keyword%'";
-                            $selecttype="my";
-                        }
-
-                        if(isset($_POST["addReport"]) && $_POST["addReport"] == "Add"){
-                            
-                            $sqlinsert= "INSERT INTO `reportform` (`patientid`, `patienttype`, `casetype`, `socialmedia`, `discriminatoryharrasment`, `sexualharrasement`, `cyberbullying`, `relationshipbreakdown`, `panicattacks`, `anxiety`, `depression`, `comments`, `doctorid`, `status`) VALUES ('".$_POST["patientid"]."', '".$_POST["patienttype"]."', '".$_POST["casetype"]."', '".$_POST["socialMedia"]."', '".$_POST["Harrasment"]."', '".$_POST["SexualHarrasement"]."', '".$_POST["CyberBullying"]."', '".$_POST["RelationshipBreakdown"]."', '".$_POST["PanicAttacks"]."', '".$_POST["Anxiety"]."', '".$_POST["Depression"]."', '".$_POST["Comments"]."', '".$_POST["doctorid"]."', '1');";
-                            $database->query($sqlinsert);
-                            echo "<script> alert('Submit successfully!');</script>";
-                            header("location: patients.php");
-                        }
-                        
-                        if(isset($_POST["filter"])){
-                            if($_POST["showonly"]=='all'){
-                                $sqlmain= "select * from patient";
-                                $selecttype="All";
-                                $current="All patient";
-                            }else{
-                                $sqlmain= "select appointment.*, patient.*, schedule.*, department.description as deptDescription, semester.description as semesterDescription from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid 
-                                inner join department on department.id = patient.paddress
-                                inner join semester on semester.id = patient.ptel 
-                                where schedule.docid=$userid;";
-                                $selecttype="My";
-                                $current="My patient Only";
-                            }
-                        }
-
-                    }else{
-                        $sqlmain= "select appointment.*, patient.*, schedule.*, department.description as deptDescription, semester.description as semesterDescription from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid 
-                            inner join department on department.id = patient.paddress
-                            inner join semester on semester.id = patient.ptel 
-                            where schedule.docid=$userid;";
-                        $selecttype="My";
-                    }
-
-
-
-                ?>
-        <div class="dash-body">
+        <?php include("../header.php"); ?>
+        <div class="dash-body" style="margin-top: 15px">
             <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;margin-top:25px; ">
                 <tr >
                     <td width="13%">
-
-                    <a href="patients.php" ><button  class="login-btn btn-primary-soft btn btn-icon-back"  style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px"><font class="tn-in-text">Back</font></button></a>
-                        
+                    <a href="<?php echo getBackUrl(); ?>">   
+                    <button class="login-btn btn-primary-soft btn btn-icon-back" style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px">
+                                <font class="tn-in-text">Back</font>
+                    </button>                     
                     </td>
                     <td>
                         
@@ -113,7 +66,10 @@
                             
                             <?php
                                 echo '<datalist id="patient">';
-                                $list11 = $database->query($sqlmain);
+                                $list11 = $database->query("select appointment.*, patient.*, schedule.*, department.description as deptDescription, semester.description as semesterDescription from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid 
+                                inner join department on department.id = patient.paddress
+                                inner join semester on semester.id = patient.ptel 
+                                where schedule.docid=$userid;");
                                //$list12= $database->query("select * from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid where schedule.docid=1;");
 
                                 for ($y=0;$y<$list11->num_rows;$y++){
@@ -152,7 +108,10 @@
                 </tr>
                 <tr>
                     <td colspan="4" style="padding-top:10px;">
-                        <p class="heading-main12" style="margin-left: 45px;font-size:18px;color:rgb(49, 49, 49)"><?php echo $selecttype." Patient (".$list11->num_rows.")"; ?></p>
+                        <p class="heading-main12" style="margin-left: 45px;font-size:18px;color:rgb(49, 49, 49)">My Patient (<?php $list11 = $database->query("select appointment.*, patient.*, schedule.*, department.description as deptDescription, semester.description as semesterDescription from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid 
+                            inner join department on department.id = patient.paddress
+                            inner join semester on semester.id = patient.ptel 
+                            where schedule.docid=$userid;"); echo $list11->num_rows; ?>)</p>
                     </td>
                 </tr>
                 <tr>
@@ -167,7 +126,7 @@
                         </td>
                         <td width="30%">
                         <select name="showonly" id="" class="box filter-container-items" style="width:90% ;height: 37px;margin: 0;" >
-                                    <option value="" disabled selected hidden><?php echo $current ?></option><br/>
+                                    <option value="" disabled selected hidden>My patient Only</option><br/>
                                     <option value="my">My patient Only</option><br/>
                                     <option value="all">All patient</option><br/>
                         </select>
@@ -214,7 +173,10 @@
                             <?php
 
                                 
-                                $result= $database->query($sqlmain);
+                                $result= $database->query("select appointment.*, patient.*, schedule.*, department.description as deptDescription, semester.description as semesterDescription from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid 
+                                inner join department on department.id = patient.paddress
+                                inner join semester on semester.id = patient.ptel 
+                                where schedule.docid=$userid;");
                                 //echo $sqlmain;
                                 if($result->num_rows==0){
                                     echo '<tr>

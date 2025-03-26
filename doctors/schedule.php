@@ -1,3 +1,28 @@
+<?php
+    session_start();
+    // Add cache control headers
+    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    header("Cache-Control: post-check=0, pre-check=0", false);
+    header("Pragma: no-cache");
+
+    if(isset($_SESSION["user"])){
+        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='d'){
+            header("location: ../login.php");
+        }else{
+            $useremail=$_SESSION["user"];
+        }
+    }else{
+        header("location: ../login.php");
+    }
+    
+    include("../connection.php");
+    include("includes/functions.php");
+    
+    $userrow = $database->query("select * from doctor where docemail='$useremail'");
+    $userfetch=$userrow->fetch_assoc();
+    $userid= $userfetch["docid"];
+    $username=$userfetch["docname"];
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,53 +33,34 @@
     <link rel="stylesheet" href="../css/main.css">  
     <link rel="stylesheet" href="../css/admin.css">
         
-    <title>Schedule</title>
+    <title>Sessions</title>
     <style>
-        .popup{
-            animation: transitionIn-Y-bottom 0.5s;
+        .dashbord-tables{
+            animation: transitionIn-Y-over 0.5s;
+        }
+        .filter-container{
+            animation: transitionIn-X  0.5s;
         }
         .sub-table{
             animation: transitionIn-Y-bottom 0.5s;
         }
-</style>
+    </style>
 </head>
 <body>
-    <?php
-
-    session_start();
-
-    if(isset($_SESSION["user"])){
-        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='d'){
-            header("location: ../login.php");
-        }else{
-            $useremail=$_SESSION["user"];
-        }
-
-    }else{
-        header("location: ../login.php");
-    }
-    
-    //import database
-    include("../connection.php");
-    $userrow = $database->query("select * from doctor where docemail='$useremail'");
-    $userfetch=$userrow->fetch_assoc();
-    $userid= $userfetch["docid"];
-    $username=$userfetch["docname"];
- //echo $userid;
- ?>
- <div class="container">
-    
-     <?php include("../header.php"); ?>
-
-        <div class="dash-body">
-            <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;margin-top:25px; ">
-                <tr >
-                    <td width="13%" >
-                    <a href="schedule.php" ><button  class="login-btn btn-primary-soft btn btn-icon-back"  style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px"><font class="tn-in-text">Back</font></button></a>
+    <div class="container">
+        <?php include("../header.php"); ?>
+        <div class="dash-body" style="margin-top: 15px">
+            <table border="0" width="100%" style="border-spacing: 0;margin:0;padding:0;">
+                <tr>
+                    <td width="13%">
+                        <a href="<?php echo getBackUrl(); ?>">
+                            <button class="login-btn btn-primary-soft btn btn-icon-back" style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px">
+                                <font class="tn-in-text">Back</font>
+                            </button>
+                        </a>
                     </td>
                     <td>
-                        <p style="font-size: 23px;padding-left:12px;font-weight: 600;">My Sessions</p>
-                                           
+                        <p style="font-size: 23px;padding-left:12px;font-weight: 600;">Sessions</p>
                     </td>
                     <td width="15%">
                         <p style="font-size: 14px;color: rgb(119, 119, 119);padding: 0;margin: 0;text-align: right;">
@@ -76,11 +82,7 @@
                     <td width="10%">
                         <button  class="btn-label"  style="display: flex;justify-content: center;align-items: center;"><img src="../img/calendar.svg" width="100%"></button>
                     </td>
-
-
                 </tr>
-               
-                
                 <tr>
                     <td colspan="4" style="padding-top:10px;width: 100%;" >
                     
@@ -88,7 +90,6 @@
                     </td>
                     
                 </tr>
-                
                 <tr>
                     <td colspan="4" style="padding-top:0px;width: 100%;" >
                         <center>
@@ -119,7 +120,6 @@
                     </td>
                     
                 </tr>
-                
                 <?php
 
                 $sqlmain= "select schedule.scheduleid,schedule.title,doctor.docname,schedule.scheduledate,schedule.scheduletime,schedule.nop from schedule inner join doctor on schedule.docid=doctor.docid where doctor.docid=$userid ";

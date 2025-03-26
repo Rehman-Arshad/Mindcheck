@@ -1,23 +1,31 @@
 <?php
-    
     session_start();
-
+    // Add headers to prevent caching
+    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    header("Cache-Control: post-check=0, pre-check=0", false);
+    header("Pragma: no-cache");
+    
     if(isset($_SESSION["user"])){
         if(($_SESSION["user"])=="" or $_SESSION['usertype']!='p'){
             header("location: ../login.php");
         }else{
             $useremail=$_SESSION["user"];
         }
-
     }else{
         header("location: ../login.php");
     }
-
+    
     include("patient_header_info.php");
-	
-	include("patient_header.php");
-
+    include("patient_header.php");
 ?>
+<!-- Add navigation.js -->
+<script src="../patient_assets/js/navigation.js"></script>
+<script>
+function goBack() {
+    window.history.back();
+    return false;
+}
+</script>
 <section class="breadcrumbs">
     <div class="container">
         <div class="dash-body" style="margin-top: 15px">
@@ -26,7 +34,7 @@
                         <tr >
                             
                         <td width="13%" >
-                    <a href="settings.php" ><button  class="login-btn btn-primary-soft btn btn-icon-back"  style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px"><font class="tn-in-text">Back</font></button></a>
+                    <a href="#" onclick="handleBackNavigation('../index.php')"><button  class="login-btn btn-primary-soft btn btn-icon-back"  style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px"><font class="tn-in-text">Back</font></button></a>
                     </td>
                     <td>
                         <p style="font-size: 23px;padding-left:12px;font-weight: 600;">Settings</p>
@@ -125,7 +133,7 @@
                             <td style="width: 25%;">
                                     <a href="?action=drop&id=<?php echo $userid.'&name='.$username ?>" class="non-style-link">
                                     <div  class="dashboard-items setting-tabs"  style="padding:20px;margin:auto;width:95%;display: flex;">
-                                        <div class="btn-icon-back dashboard-icons-setting" style="background-image: url('../img/icons/patient-hover.svg');"></div>
+                                        <div class="btn-icon-back dashboard-icons-setting" style="background-image: url('../img/icons/delete-iceblue.svg');"></div>
                                         <div>
                                                 <div class="h1-dashboard" style="color: #ff5050;">
                                                     Delete Account

@@ -69,7 +69,7 @@ h6 {
 }
 
 #header.header-scrolled {
-    background: #000000; /* Dark background on scroll */
+    background: #1977cc; /* Dark background on scroll */
     box-shadow: 0 0 10px rgba(0, 26, 255, 0.8);
     padding: 10px 0;
      
@@ -184,8 +184,8 @@ h6 {
 .navbar .active,
 .navbar .active:focus,
 .navbar li:hover>a {
-  color: #1977cc;
-  border-color: #1977cc;
+  color: white;
+  border-bottom: 2px solid white;
 }
 
 .navbar .dropdown ul {
@@ -1088,12 +1088,11 @@ section {
 .doctors .member span::after {
   content: "";
   position: absolute;
-  display: block;
+  left: 0;
+  bottom: 0;
   width: 50px;
   height: 1px;
   background: #b2c8dd;
-  bottom: 0;
-  left: 0;
 }
 
 .doctors .member p {
@@ -1120,9 +1119,9 @@ section {
 }
 
 .doctors .member .social a i {
-  color: #fff;
   font-size: 16px;
   margin: 0 2px;
+  color: #fff;
 }
 
 .doctors .member .social a:hover {
@@ -1524,4 +1523,15 @@ section {
   background: #1c84e3;
   color: #fff;
   text-decoration: none;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.7);
+  transition: opacity 500ms;
+  z-index: 1000;
 }

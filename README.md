@@ -7,7 +7,6 @@
   
   
     Admin can add doctors,edit doctors, delete doctors;
-    
     Schedule new doctors sessions,remove sessions;
     
     View patientss details;

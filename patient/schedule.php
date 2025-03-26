@@ -1,58 +1,38 @@
 <?php
-
     session_start();
-
     if(isset($_SESSION["user"])){
         if(($_SESSION["user"])=="" or $_SESSION['usertype']!='p'){
             header("location: ../login.php");
         }else{
             $useremail=$_SESSION["user"];
         }
-
     }else{
         header("location: ../login.php");
     }
     
+    include("../connection.php");
     include("patient_header_info.php");
-
-    date_default_timezone_set('Asia/Karachi');
-
-    $today = date('Y-m-d');
-	
-	include("patient_header.php");
-
+    include("patient_header.php");
 ?>
+<!-- Add navigation.js -->
+<script src="../patient_assets/js/navigation.js"></script>
 <section class="breadcrumbs">
- <div class="container">
-        <?php
-
-                $sqlmain= "select * from schedule inner join doctor on schedule.docid=doctor.docid where schedule.scheduledate>='$today'  order by schedule.scheduledate asc";
-                $sqlpt1="";
-                $insertkey="";
-                $q='';
-                $searchtype="All";
-                        if($_POST){
-                        //print_r($_POST);
-                        
-                        if(!empty($_POST["search"])){
-                            
-                            $keyword=$_POST["search"];
-                            $sqlmain= "select * from schedule inner join doctor on schedule.docid=doctor.docid where schedule.scheduledate>='$today' and (doctor.docname='$keyword' or doctor.docname like '$keyword%' or doctor.docname like '%$keyword' or doctor.docname like '%$keyword%' or schedule.title='$keyword' or schedule.title like '$keyword%' or schedule.title like '%$keyword' or schedule.title like '%$keyword%' or schedule.scheduledate like '$keyword%' or schedule.scheduledate like '%$keyword' or schedule.scheduledate like '%$keyword%' or schedule.scheduledate='$keyword' )  order by schedule.scheduledate asc";
-                            //echo $sqlmain;
-                            $insertkey=$keyword;
-                            $searchtype="Search Result : ";
-                            $q='"';
-                        }
-
-                    }
-
-
-                $result= $database->query($sqlmain)
-
-
-                ?>
-                  
-        <div class="dash-body">
+    <div class="container">
+        <div class="dash-body" style="margin-top: 15px">
+            <table border="0" width="100%" style="border-spacing: 0;margin:0;padding:0;">
+                <tr>
+                    <td width="13%">
+                        <a href="#" onclick="handleBackNavigation('../index.php')">
+                            <button class="login-btn btn-primary-soft btn btn-icon-back" style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px">
+                                <font class="tn-in-text">Back</font>
+                            </button>
+                        </a>
+                    </td>
+                    <td>
+                        <p style="font-size: 23px;padding-left:12px;font-weight: 600;">Scheduled Sessions</p>
+                    </td>
+                </tr>
+            </table>
             <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;margin-top:25px; ">
                 <tr >
                     <td width="13%" >
