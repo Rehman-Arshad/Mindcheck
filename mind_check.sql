@@ -62,7 +62,66 @@ INSERT INTO `webuser` (`email`, `usertype`) VALUES
 ('patient1@mindcheck.com', 'p'),
 ('patient2@mindcheck.com', 'p'),
 ('patient3@mindcheck.com', 'p'),
-('patient4@mindcheck.com', 'p');
+('patient4@mindcheck.com', 'p'),
+('john.smith@mindcheck.com', 'd'),
+('sarah.johnson@mindcheck.com', 'd'),
+('michael.brown@mindcheck.com', 'd'),
+('emily.davis@mindcheck.com', 'd'),
+('david.wilson@mindcheck.com', 'd');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `specialties`
+--
+
+CREATE TABLE IF NOT EXISTS `specialties` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `description` text DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Dumping data for table `specialties`
+--
+
+INSERT INTO `specialties` (`id`, `name`, `description`) VALUES
+(1, 'Child Psychiatry', 'Specializes in mental, emotional, and behavioral disorders in children'),
+(2, 'Child Psychology', 'Focuses on psychological development and behavioral issues'),
+(3, 'Developmental Specialist', 'Expertise in child development and developmental disorders'),
+(4, 'Behavioral Therapy', 'Specialized in behavioral intervention and modification'),
+(5, 'Child Neurology', 'Focuses on neurological conditions affecting children');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `doctor`
+--
+
+CREATE TABLE IF NOT EXISTS `doctor` (
+  `docid` int(11) NOT NULL AUTO_INCREMENT,
+  `docemail` varchar(255) NOT NULL,
+  `docname` varchar(255) DEFAULT NULL,
+  `docpassword` varchar(255) DEFAULT NULL,
+  `docnic` varchar(15) DEFAULT NULL,
+  `doctel` varchar(15) DEFAULT NULL,
+  `specialties` int(11) DEFAULT NULL,
+  `docexp` int(11) DEFAULT NULL,
+  PRIMARY KEY (`docid`),
+  FOREIGN KEY (`specialties`) REFERENCES `specialties`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Dumping data for table `doctor`
+--
+
+INSERT INTO `doctor` (`docid`, `docemail`, `docname`, `docpassword`, `docnic`, `doctel`, `specialties`, `docexp`) VALUES
+(1, 'john.smith@mindcheck.com', 'John Smith', 'password123', '1234567890', '555-0101', 1, 5),
+(2, 'sarah.johnson@mindcheck.com', 'Sarah Johnson', 'password123', '2345678901', '555-0102', 2, 3),
+(3, 'michael.brown@mindcheck.com', 'Michael Brown', 'password123', '3456789012', '555-0103', 3, 4),
+(4, 'emily.davis@mindcheck.com', 'Emily Davis', 'password123', '4567890123', '555-0104', 4, 6),
+(5, 'david.wilson@mindcheck.com', 'David Wilson', 'password123', '5678901234', '555-0105', 5, 7);
 
 -- --------------------------------------------------------
 
@@ -95,36 +154,6 @@ INSERT INTO `patient` (`pid`, `pemail`, `pname`, `ppassword`, `pnic`, `ptel`) VA
 -- --------------------------------------------------------
 
 --
--- Table structure for table `doctor`
---
-
-CREATE TABLE `doctor` (
-  `docid` int(11) NOT NULL AUTO_INCREMENT,
-  `docemail` varchar(255) NOT NULL,
-  `docname` varchar(255) DEFAULT NULL,
-  `docpassword` varchar(255) NOT NULL,
-  `docnic` varchar(15) DEFAULT NULL,
-  `doctel` varchar(15) DEFAULT NULL,
-  `specialties` int(2) DEFAULT NULL,
-  `docexp` int(11) DEFAULT NULL,
-  PRIMARY KEY (`docid`),
-  KEY `docemail` (`docemail`),
-  CONSTRAINT `doctor_webuser_fk` FOREIGN KEY (`docemail`) REFERENCES `webuser` (`email`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
---
--- Dumping data for table `doctor`
---
-
-INSERT INTO `doctor` (`docid`, `docemail`, `docname`, `docpassword`, `docnic`, `doctel`, `specialties`, `docexp`) VALUES
-(1, 'doctor1@mindcheck.com', 'Doctor 1', '123', '1000000001', '0300-1000001', 1, 5),
-(2, 'doctor2@mindcheck.com', 'Doctor 2', '123', '1000000002', '0300-1000002', 2, 3),
-(3, 'doctor3@mindcheck.com', 'Doctor 3', '123', '1000000003', '0300-1000003', 3, 4),
-(4, 'doctor4@mindcheck.com', 'Doctor 4', '123', '1000000004', '0300-1000004', 4, 6);
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `schedule`
 --
 
@@ -137,24 +166,43 @@ CREATE TABLE IF NOT EXISTS `schedule` (
   `nop` int(11) NOT NULL,
   PRIMARY KEY (`scheduleid`),
   KEY `docid` (`docid`),
-  CONSTRAINT `schedule_doctor_fk` FOREIGN KEY (`docid`) REFERENCES `doctor` (`docid`) ON DELETE CASCADE ON UPDATE CASCADE
+  CONSTRAINT `schedule_ibfk_1` FOREIGN KEY (`docid`) REFERENCES `doctor` (`docid`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `schedule`
 --
 
-INSERT INTO `schedule` (`scheduleid`, `docid`, `title`, `scheduledate`, `scheduletime`, `nop`) VALUES
-(1, 1, 'Regular Checkup', '2022-06-10', '12:32:00', 1),
-(4, 1, 'Follow-up', '2022-06-10', '12:32:00', 1),
-(5, 1, 'Evening Session', '2022-06-10', '20:35:00', 1),
-(6, 1, 'Consultation', '2022-06-10', '20:35:00', 1),
-(7, 1, 'Regular Visit', '2022-06-24', '20:36:00', 1),
-(8, 1, 'Check-up', '2022-06-10', '13:33:00', 1),
-(9, 1, 'General Session', '2023-10-08', '08:35:00', 283),
-(12, 1, 'Azwa Doctor', '2023-10-18', '05:57:00', 25),
-(13, 4, 'Consultation', '2023-11-29', '00:25:00', 20),
-(14, 4, 'Regular Session', '2023-11-23', '09:24:00', 21);
+INSERT INTO `schedule` (`docid`, `title`, `scheduledate`, `scheduletime`, `nop`) VALUES
+-- Dr. John Smith (Child Psychiatrist) - Available slots this week
+(1, 'Morning Session', '2025-04-01', '09:00:00', 1),
+(1, 'Afternoon Session', '2025-04-01', '14:00:00', 1),
+(1, 'Morning Session', '2025-04-02', '10:00:00', 1),
+(1, 'Afternoon Session', '2025-04-02', '15:00:00', 1),
+
+-- Dr. Sarah Johnson (Child Psychologist) - Available slots this week
+(2, 'Morning Session', '2025-04-03', '09:30:00', 1),
+(2, 'Afternoon Session', '2025-04-03', '14:30:00', 1),
+(2, 'Morning Session', '2025-04-04', '10:30:00', 1),
+(2, 'Afternoon Session', '2025-04-04', '15:30:00', 1),
+
+-- Dr. Michael Brown (Developmental Specialist) - Later dates
+(3, 'Morning Session', '2025-04-27', '09:00:00', 1),
+(3, 'Afternoon Session', '2025-04-27', '14:00:00', 1),
+(3, 'Morning Session', '2025-04-28', '10:00:00', 1),
+(3, 'Afternoon Session', '2025-04-28', '15:00:00', 1),
+
+-- Dr. Emily Davis (Behavioral Therapist) - Later dates
+(4, 'Morning Session', '2025-04-28', '09:30:00', 1),
+(4, 'Afternoon Session', '2025-04-28', '14:30:00', 1),
+(4, 'Morning Session', '2025-04-29', '10:30:00', 1),
+(4, 'Afternoon Session', '2025-04-29', '15:30:00', 1),
+
+-- Dr. David Wilson (Child Neurologist) - Later dates
+(5, 'Morning Session', '2025-04-29', '09:00:00', 1),
+(5, 'Afternoon Session', '2025-04-29', '14:00:00', 1),
+(5, 'Morning Session', '2025-04-30', '10:00:00', 1),
+(5, 'Afternoon Session', '2025-04-30', '15:00:00', 1);
 
 -- --------------------------------------------------------
 
@@ -162,97 +210,47 @@ INSERT INTO `schedule` (`scheduleid`, `docid`, `title`, `scheduledate`, `schedul
 -- Table structure for table `appointment`
 --
 
-CREATE TABLE `appointment` (
+CREATE TABLE IF NOT EXISTS `appointment` (
   `appoid` int(11) NOT NULL AUTO_INCREMENT,
   `pid` int(11) NOT NULL,
-  `apponum` int(11) NOT NULL,
   `scheduleid` int(11) NOT NULL,
-  `appodate` date NOT NULL,
-  `status` varchar(50) DEFAULT 'pending',
-  `reason` text DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `status` varchar(50) NOT NULL DEFAULT 'pending',
   PRIMARY KEY (`appoid`),
   KEY `pid` (`pid`),
   KEY `scheduleid` (`scheduleid`),
-  CONSTRAINT `appointment_patient_fk` FOREIGN KEY (`pid`) REFERENCES `patient` (`pid`) ON DELETE CASCADE,
-  CONSTRAINT `appointment_schedule_fk` FOREIGN KEY (`scheduleid`) REFERENCES `schedule` (`scheduleid`) ON DELETE CASCADE
+  CONSTRAINT `appointment_ibfk_1` FOREIGN KEY (`pid`) REFERENCES `patient` (`pid`) ON DELETE CASCADE,
+  CONSTRAINT `appointment_ibfk_2` FOREIGN KEY (`scheduleid`) REFERENCES `schedule` (`scheduleid`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
---
--- Dumping data for table `appointment`
---
-
-INSERT INTO `appointment` (`appoid`, `pid`, `apponum`, `scheduleid`, `appodate`, `status`, `reason`, `created_at`) VALUES
-(1, 1, 1, 1, '2022-06-03', 'completed', NULL, '2022-06-03 10:00:00'),
-(2, 1, 1, 9, '2023-10-07', 'completed', NULL, '2023-10-07 08:30:00'),
-(3, 1, 1, 12, '2023-10-15', 'completed', NULL, '2023-10-15 05:57:00'),
-(4, 3, 2, 12, '2023-10-15', 'completed', NULL, '2023-10-15 06:30:00'),
-(5, 4, 3, 12, '2023-10-16', 'completed', NULL, '2023-10-16 05:57:00'),
-(6, 1, 1, 13, '2023-11-13', 'pending', NULL, '2023-11-13 00:25:00'),
-(7, 1, 1, 14, '2023-11-13', 'pending', NULL, '2023-11-13 09:24:00');
 
 -- --------------------------------------------------------
 
 --
--- Table structure for table `specialties`
+-- Table structure for table `assessment_categories`
 --
 
-CREATE TABLE `specialties` (
-  `id` int(2) NOT NULL AUTO_INCREMENT,
-  `sname` varchar(100) NOT NULL,
-  `description` text DEFAULT NULL,
-  PRIMARY KEY (`id`)
+DROP TABLE IF EXISTS `assessment_categories`;
+CREATE TABLE `assessment_categories` (
+    `id` INT PRIMARY KEY AUTO_INCREMENT,
+    `name` VARCHAR(50) NOT NULL,
+    `description` TEXT,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
--- Dumping data for table `specialties`
+-- Dumping data for table `assessment_categories`
 --
 
-INSERT INTO `specialties` (`id`, `sname`, `description`) VALUES
-(1, 'Child & Adolescent Psychiatry', 'Specializes in diagnosing and treating mental health disorders in children and teenagers'),
-(2, 'Behavioral Psychology', 'Focuses on analyzing and modifying problematic behaviors in children'),
-(3, 'Developmental Psychology', 'Expertise in child development, developmental delays, and disorders'),
-(4, 'Pediatric Neuropsychology', 'Specializes in brain-behavior relationships and cognitive development'),
-(5, 'Clinical Child Psychology', 'Focuses on emotional and behavioral disorders in children'),
-(6, 'Educational Psychology', 'Specializes in learning disabilities and educational interventions'),
-(7, 'Family Therapy', 'Focuses on family dynamics and their impact on child development'),
-(8, 'Autism Spectrum Disorders', 'Specializes in diagnosis and treatment of autism and related conditions'),
-(9, 'ADHD & Learning Disorders', 'Expertise in attention deficit disorders and learning difficulties'),
-(10, 'Child Behavioral Therapy', 'Focuses on behavioral interventions and modifications'),
-(11, 'Pediatric Mental Health', 'General child mental health assessment and treatment'),
-(12, 'Early Intervention Specialist', 'Focuses on early detection and intervention of developmental issues');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `assessment_questions`
---
-
-CREATE TABLE `assessment_questions` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `category` varchar(50) NOT NULL,
-  `question` text NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
---
--- Dumping data for table `assessment_questions`
---
-
-INSERT INTO `assessment_questions` (`category`, `question`) VALUES
-('social_interaction', 'Does the child make eye contact when spoken to?'),
-('social_interaction', 'Does the child respond to their name when called?'),
-('social_interaction', 'Does the child show interest in playing with other children?'),
-('communication', 'Does the child use gestures like pointing or waving?'),
-('communication', 'Does the child engage in pretend play?'),
-('communication', 'Can the child follow simple instructions?'),
-('behavior_patterns', 'Does the child have strong reactions to certain sounds or textures?'),
-('behavior_patterns', 'Does the child engage in repetitive movements?'),
-('behavior_patterns', 'Does the child have difficulty with changes in routine?'),
-('emotional_regulation', 'Can the child express basic emotions appropriately?'),
-('emotional_regulation', 'Does the child show empathy towards others?'),
-('emotional_regulation', 'Can the child calm themselves when upset?');
+INSERT INTO `assessment_categories` (`name`, `description`) VALUES
+('relating_to_people', 'How the child interacts and relates to other people, including eye contact, social responses, and engagement with others.'),
+('emotional_response', 'The child\'s emotional reactions, expressions, and ability to show appropriate feelings in different situations.'),
+('body_use', 'How the child uses their body, including coordination, motor skills, and physical movements.'),
+('object_use', 'How the child interacts with and uses objects, toys, and other items in their environment.'),
+('listening_response', 'How the child responds to sounds, verbal communication, and follows verbal instructions.'),
+('adaptation_to_change', 'How well the child adapts to changes in routine, environment, or activities.'),
+('fear_or_nervousness', 'The child\'s anxiety levels, fear responses, and ability to cope with stressful situations.'),
+('visual_response', 'How the child responds to visual stimuli, including eye contact and visual tracking.'),
+('verbal_communication', 'The child\'s verbal communication skills, including speech, language development, and conversation abilities.'),
+('activity_level', 'The child\'s energy levels, attention span, and ability to regulate activity appropriately.');
 
 -- --------------------------------------------------------
 
@@ -260,36 +258,34 @@ INSERT INTO `assessment_questions` (`category`, `question`) VALUES
 -- Table structure for table `assessments`
 --
 
+DROP TABLE IF EXISTS `assessment_scores`;
+DROP TABLE IF EXISTS `assessment_responses`;
+DROP TABLE IF EXISTS `assessments`;
 CREATE TABLE `assessments` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `patient_id` int(11) NOT NULL,
-  `child_name` varchar(255) NOT NULL,
-  `age` int(11) NOT NULL,
-  `gender` enum('male','female','other') NOT NULL,
-  `total_score` decimal(5,2) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `patient_id` (`patient_id`),
-  CONSTRAINT `assessments_patient_fk` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`pid`) ON DELETE CASCADE
+    `id` INT PRIMARY KEY AUTO_INCREMENT,
+    `patient_id` INT NOT NULL,
+    `child_name` VARCHAR(255) NOT NULL,
+    `phone` VARCHAR(20) NOT NULL,
+    `gender` ENUM('male', 'female', 'other') NOT NULL,
+    `test_date` DATE NOT NULL,
+    `birth_date` DATE NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`patient_id`) REFERENCES `patient`(`pid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
 
 --
--- Table structure for table `assessment_responses`
+-- Table structure for table `assessment_scores`
 --
 
-CREATE TABLE `assessment_responses` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `assessment_id` int(11) NOT NULL,
-  `question_id` int(11) NOT NULL,
-  `score` int(11) NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `assessment_id` (`assessment_id`),
-  KEY `question_id` (`question_id`),
-  CONSTRAINT `assessment_responses_assessment_fk` FOREIGN KEY (`assessment_id`) REFERENCES `assessments` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `assessment_responses_question_fk` FOREIGN KEY (`question_id`) REFERENCES `assessment_questions` (`id`) ON DELETE CASCADE
+CREATE TABLE `assessment_scores` (
+    `id` INT PRIMARY KEY AUTO_INCREMENT,
+    `assessment_id` INT NOT NULL,
+    `category` VARCHAR(50) NOT NULL,
+    `score` DECIMAL(4,2) NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`assessment_id`) REFERENCES `assessments`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 COMMIT;

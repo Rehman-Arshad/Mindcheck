@@ -1,599 +1,351 @@
 <?php
-    session_start();
-    // Add cache control headers
-    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-    header("Cache-Control: post-check=0, pre-check=0", false);
-    header("Pragma: no-cache");
+session_start();
+if (!isset($_SESSION["user"]) || $_SESSION["usertype"] != 'd') {
+    header("location: ../login.php");
+    exit();
+}
 
-    if(isset($_SESSION["user"])){
-        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='d'){
-            header("location: ../login.php");
-        }else{
-            $useremail=$_SESSION["user"];
-        }
-    }else{
-        header("location: ../login.php");
-    }
-    
-    include("../connection.php");
-    include("includes/functions.php");
-    
-    $userrow = $database->query("select * from doctor where docemail='$useremail'");
-    $userfetch=$userrow->fetch_assoc();
-    $userid= $userfetch["docid"];
-    $username=$userfetch["docname"];
+include("../connection.php");
+
+// Get doctor ID
+$email = $_SESSION["user"];
+$result = $database->query("SELECT docid FROM doctor WHERE docemail='$email'");
+if ($result && $result->num_rows > 0) {
+    $row = $result->fetch_assoc();
+    $docid = $row['docid'];
+} else {
+    die("Error: Doctor not found");
+}
+
+// Search functionality
+$search = isset($_GET['search']) ? $_GET['search'] : '';
+$search_query = '';
+if ($search) {
+    $search_query = " AND (p.pname LIKE ? OR p.pemail LIKE ?)";
+}
+
+// Base query
+$query = "
+    SELECT 
+        p.*,
+        MAX(s.scheduledate) as last_visit,
+        COUNT(DISTINCT a.appoid) as total_visits,
+        (
+            SELECT status 
+            FROM appointment a2 
+            INNER JOIN schedule s2 ON a2.scheduleid = s2.scheduleid
+            WHERE a2.pid = p.pid AND s2.docid = ?
+            ORDER BY s2.scheduledate DESC 
+            LIMIT 1
+        ) as latest_status
+    FROM patient p
+    LEFT JOIN appointment a ON p.pid = a.pid
+    LEFT JOIN schedule s ON a.scheduleid = s.scheduleid AND s.docid = ?
+    WHERE 1=1 $search_query
+    GROUP BY p.pid
+    ORDER BY last_visit DESC, p.pname ASC
+";
+
+$params = [$docid, $docid];
+$param_types = "ii";
+
+if ($search) {
+    $search_param = "%$search%";
+    $params[] = $search_param;
+    $params[] = $search_param;
+    $param_types .= "ss";
+}
+
+$stmt = $database->prepare($query);
+if (!$stmt) {
+    die("Error preparing query: " . $database->error);
+}
+
+$stmt->bind_param($param_types, ...$params);
+$stmt->execute();
+$patients = $stmt->get_result();
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../css/animations.css">  
-    <link rel="stylesheet" href="../css/main.css">  
-    <link rel="stylesheet" href="../css/admin.css">
-        
-    <title>Patients</title>
+    <title>Patients - MindCheck</title>
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link rel="stylesheet" href="../css/main.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .dashbord-tables{
-            animation: transitionIn-Y-over 0.5s;
+        :root {
+            --primary: #1977cc;
+            --secondary: #2c4964;
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --light: #f8f9fa;
+            --dark: #343a40;
         }
-        .filter-container{
-            animation: transitionIn-X  0.5s;
+
+        body { 
+            background-color: var(--light);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        .sub-table{
-            animation: transitionIn-Y-bottom 0.5s;
+
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 1.5rem;
+        }
+
+        .card-header {
+            background: white;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 1.5rem;
+            border-radius: 15px 15px 0 0 !important;
+        }
+
+        .card-header h2 {
+            margin: 0;
+            color: var(--secondary);
+            font-size: 1.5rem;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        .search-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 1.5rem;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 0.5rem 1rem;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            color: var(--dark);
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 0.2rem rgba(25,119,204,0.25);
+        }
+        
+        .patient-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .patient-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden;
+            transition: transform 0.3s ease;
+        }
+        
+        .patient-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .patient-header {
+            padding: 1.25rem;
+            background: linear-gradient(135deg, var(--primary), #3291e6);
+            color: white;
+        }
+        
+        .patient-header h3 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 500;
+        }
+        
+        .visit-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .patient-body {
+            padding: 1.25rem;
+        }
+        
+        .patient-info {
+            margin-bottom: 1.25rem;
+        }
+        
+        .patient-info p {
+            margin: 0.5rem 0;
+            color: var(--secondary);
+            font-size: 0.9rem;
+        }
+        
+        .patient-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .btn-action {
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1565b0;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--light);
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1.5rem;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            grid-column: 1 / -1;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            color: #dee2e6;
+            margin-bottom: 1rem;
+        }
+        
+        .empty-state h3 {
+            color: var(--secondary);
+            margin-bottom: 0.5rem;
+            font-size: 1.25rem;
+        }
+        
+        .empty-state p {
+            color: #6c757d;
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .search-form {
+                flex-direction: column;
+            }
+            .patient-grid {
+                grid-template-columns: 1fr;
+            }
+            .patient-actions {
+                flex-direction: column;
+            }
+            .btn-action {
+                width: 100%;
+                justify-content: center;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <?php include("../header.php"); ?>
-        <div class="dash-body" style="margin-top: 15px">
-            <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;margin-top:25px; ">
-                <tr >
-                    <td width="13%">
-                    <a href="<?php echo getBackUrl(); ?>">   
-                    <button class="login-btn btn-primary-soft btn btn-icon-back" style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px">
-                                <font class="tn-in-text">Back</font>
-                    </button>                     
-                    </td>
-                    <td>
-                        
-                        <form action="" method="post" class="header-search">
+    <?php include("header.php"); ?>
 
-                            <input type="search" name="search12" class="input-text header-searchbar" placeholder="Search Patient Name or Email" list="patient">&nbsp;&nbsp;
-                            
-                            <?php
-                                echo '<datalist id="patient">';
-                                $list11 = $database->query("select appointment.*, patient.*, schedule.*, department.description as deptDescription, semester.description as semesterDescription from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid 
-                                inner join department on department.id = patient.paddress
-                                inner join semester on semester.id = patient.ptel 
-                                where schedule.docid=$userid;");
-                               //$list12= $database->query("select * from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid where schedule.docid=1;");
+    <div class="container-fluid py-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2>Patients</h2>
+                <a href="add-patient.php" class="btn-action btn-primary">
+                    <i class='bx bx-user-plus'></i> Add New Patient
+                </a>
+            </div>
+            <div class="card-body">
+                <form method="get" class="search-form">
+                    <input type="text" name="search" class="search-input" 
+                           placeholder="Search by name or email" 
+                           value="<?php echo htmlspecialchars($search); ?>">
+                    <button type="submit" class="btn-action btn-primary">
+                        <i class='bx bx-search'></i> Search
+                    </button>
+                </form>
 
-                                for ($y=0;$y<$list11->num_rows;$y++){
-                                    $row00=$list11->fetch_assoc();
-                                    $d=$row00["pname"];
-                                    $c=$row00["pemail"];
-                                    echo "<option value='$d'><br/>";
-                                    echo "<option value='$c'><br/>";
-                                };
-
-                            echo ' </datalist>';
-?>
-                            
-                       
-                            <input type="Submit" value="Search" name="search" class="login-btn btn-primary btn" style="padding-left: 25px;padding-right: 25px;padding-top: 10px;padding-bottom: 10px;">
-                        
-                        </form>
-                        
-                    </td>
-                    <td width="15%">
-                        <p style="font-size: 14px;color: rgb(119, 119, 119);padding: 0;margin: 0;text-align: right;">
-                            Today's Date
-                        </p>
-                        <p class="heading-sub12" style="padding: 0;margin: 0; margin-left: 100px;">
-                            <?php 
-                        date_default_timezone_set('Asia/Karachi');
-
-                        $date = date('Y-m-d');
-                        echo $date;
-                        ?>
-                        </p>
-                    </td>
-                    <td width="10%">
-                        <button  class="btn-label"  style="display: flex;justify-content: center;align-items: center;"><img src="../img/calendar.svg" width="100%"></button>
-                    </td>
-                </tr>
-                <tr>
-                    <td colspan="4" style="padding-top:10px;">
-                        <p class="heading-main12" style="margin-left: 45px;font-size:18px;color:rgb(49, 49, 49)">My Patient (<?php $list11 = $database->query("select appointment.*, patient.*, schedule.*, department.description as deptDescription, semester.description as semesterDescription from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid 
-                            inner join department on department.id = patient.paddress
-                            inner join semester on semester.id = patient.ptel 
-                            where schedule.docid=$userid;"); echo $list11->num_rows; ?>)</p>
-                    </td>
-                </tr>
-                <tr>
-                    <td colspan="4" style="padding-top:0px;width: 100%;" >
-                        <center>
-                        <table class="filter-container" border="0" >
- 
-                        <form action="" method="post">
-                        
-                        <td  style="text-align: right;">
-                        Show Details About : &nbsp;
-                        </td>
-                        <td width="30%">
-                        <select name="showonly" id="" class="box filter-container-items" style="width:90% ;height: 37px;margin: 0;" >
-                                    <option value="" disabled selected hidden>My patient Only</option><br/>
-                                    <option value="my">My patient Only</option><br/>
-                                    <option value="all">All patient</option><br/>
-                        </select>
-                    </td>
-                    <td width="12%">
-                        <input type="submit"  name="filter" value=" Filter" class=" btn-primary-soft btn button-icon btn-filter"  style="padding: 15px; margin :0;width:100%">
-                        </form>
-                    </td>
-
-                    </tr>
-                            </table>
-
-                        </center>
-                    </td>
-                    
-                </tr>
-                  
-                <tr>
-                   <td colspan="4">
-                       <center>
-                        <div class="abc scroll">
-                        <table width="93%" class="sub-table scrolldown"  style="border-spacing:0;">
-                        <thead>
-                        <tr>
-                            <th class="table-headin">      
-                            SAP ID
-                            </th>
-                            <th class="table-headin">
-                            DEPARTMENT
-                            </th>
-                            <th class="table-headin">
-                            SEMESTER
-                            </th>
-                            <th class="table-headin">
-                            Email
-                            </th>
-                            <th class="table-headin">
-                            Report
-                            </th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        
-                            <?php
-
-                                
-                                $result= $database->query("select appointment.*, patient.*, schedule.*, department.description as deptDescription, semester.description as semesterDescription from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid 
-                                inner join department on department.id = patient.paddress
-                                inner join semester on semester.id = patient.ptel 
-                                where schedule.docid=$userid;");
-                                //echo $sqlmain;
-                                if($result->num_rows==0){
-                                    echo '<tr>
-                                    <td colspan="4">
-                                    <br><br><br><br>
-                                    <center>
-                                    <img src="../img/notfound.svg" width="25%">
-                                    
-                                    <br>
-                                    <p class="heading-main12" style="margin-left: 45px;font-size:20px;color:rgb(49, 49, 49)">We  couldnt find anything related to your keywords !</p>
-                                    <a class="non-style-link" href="patients.php"><button  class="login-btn btn-primary-soft btn"  style="display: flex;justify-content: center;align-items: center;margin-left:20px;">&nbsp; Show all patient &nbsp;</font></button>
-                                    </a>
-                                    </center>
-                                    <br><br><br><br>
-                                    </td>
-                                    </tr>';
-                                    
-                                }
-                                else{
-                                for ( $x=0; $x<$result->num_rows;$x++){
-                                    $row=$result->fetch_assoc();
-                                    $pid=$row["pid"];
-                                    $name=$row["pnic"];
-                                    $email=$row["pemail"];
-                                    $nic=$row["deptDescription"];
-                                    $tel=$row["semesterDescription"];
-
-                                    $sqlmain= "select * from reportform where patientid=$pid and doctorid='$useremail' order by id desc";
-                                    $reportFormData= $database->query($sqlmain);
-                                    $buttonText = "";
-                                    if($reportFormData->num_rows==0)
-                                    {
-                                        echo '<tr>
-                                        <td> &nbsp;'.
-                                        $name
-                                        .'</td>
-                                        <td>
-                                        '.$nic.'
-                                        </td>
-                                        <td>
-                                        '.$tel.'
-                                        </td>
-                                        <td>
-                                        '.$email.'
-                                         </td>
-                                        <td>
-                                        <div style="display:flex;justify-content: center;">
-                                            <a href="?action=report&id='.$pid.'" class="non-style-link"><button  class="btn-primary-soft btn button-icon btn-view"  style="padding-left: 40px;padding-top: 12px;padding-bottom: 12px;margin-top: 10px;"><font class="tn-in-text">Add Report</font></button></a>
-                                        </div>
-                                        </td>
-                                    </tr>';
-                                        
-                                    }else{
-                                        $reportFormRow=$reportFormData->fetch_assoc();
-                                        echo '<tr>
-                                        <td> &nbsp;'.
-                                        $name
-                                        .'</td>
-                                        <td>
-                                        '.$nic.'
-                                        </td>
-                                        <td>
-                                        '.$tel.'
-                                        </td>
-                                        <td>
-                                        '.$email.'
-                                         </td>
-                                        <td>
-                                        <div style="display:flex;justify-content: center;">
-                                            <a href="?action=view&id='.$reportFormRow["id"].'" class="non-style-link"><button  class="btn-primary-soft btn button-icon btn-view"  style="padding-left: 40px;padding-top: 12px;padding-bottom: 12px;margin-top: 10px;"><font class="tn-in-text">View</font></button></a>
-                                        </div>
-                                        </td>
-                                    </tr>';
-                                    }
-                                    
-                                }
-                            }
-                                 
-                            ?>
- 
-                            </tbody>
-
-                        </table>
+                <div class="patient-grid">
+                    <?php if ($patients && $patients->num_rows > 0): ?>
+                        <?php while($row = $patients->fetch_assoc()): ?>
+                            <div class="patient-card">
+                                <div class="patient-header">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <h3><?php echo htmlspecialchars($row['pname']); ?></h3>
+                                        <span class="visit-badge">
+                                            <i class='bx bx-time'></i>
+                                            <?php echo (int)$row['total_visits']; ?> visits
+                                        </span>
+                                    </div>
+                                    <?php if ($row['latest_status']): ?>
+                                        <span class="status-badge status-<?php echo strtolower($row['latest_status']); ?>">
+                                            <i class='bx bx-<?php 
+                                                echo $row['latest_status'] === 'confirmed' ? 'check-circle' : 
+                                                    ($row['latest_status'] === 'cancelled' ? 'x-circle' : 'time-five');
+                                            ?>'></i>
+                                            <?php echo ucfirst($row['latest_status']); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="patient-body">
+                                    <div class="patient-info">
+                                        <p><strong>Email:</strong> <?php echo htmlspecialchars($row['pemail']); ?></p>
+                                        <p><strong>Phone:</strong> <?php echo htmlspecialchars($row['ptel']); ?></p>
+                                        <?php if ($row['last_visit']): ?>
+                                            <p><strong>Last Visit:</strong> <?php echo date('F j, Y', strtotime($row['last_visit'])); ?></p>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="patient-actions">
+                                        <a href="patient-details.php?id=<?php echo $row['pid']; ?>" class="btn-action btn-primary">
+                                            <i class='bx bx-user'></i> View Details
+                                        </a>
+                                        <a href="schedule.php?pid=<?php echo $row['pid']; ?>" class="btn-action btn-secondary">
+                                            <i class='bx bx-calendar-plus'></i> Schedule
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class='bx bx-user-x'></i>
+                            <h3>No patients found</h3>
+                            <p><?php echo $search ? 'No patients match your search criteria.' : 'You haven\'t added any patients yet.'; ?></p>
                         </div>
-                        </center>
-                   </td> 
-                </tr>
-                       
-                        
-                        
-            </table>
+                    <?php endif; ?>
+                </div>
+            </div>
         </div>
     </div>
-    <?php 
-    if($_GET){
-        
-        $id=$_GET["id"];
-        $action=$_GET["action"];
-        IF(isset($action) && $action == "view"){
-            $sqlmain= "select * from reportform where id=$id;";
-            $reportFormData= $database->query($sqlmain);
-            $reportFormRow=$reportFormData->fetch_assoc();
-            echo '
-            <div id="popup1" class="overlay">
-                <div class="popup">
-                    <center>
-                        <a class="close" href="patients.php">&times;</a>
-                        <div class="content"></div>
-                        <div style="display: flex;justify-content: center;">
-                            <form name="reportForm" id="idForm" action="" method="POST">
-                                <table width="80%" class="sub-table scrolldown add-doc-form-container" border="0">
-                                    <tr>
-                                        <td>
-                                            <p style="padding: 0;margin: 0;text-align: left;font-size: 25px;font-weight: 500;">View Details</p><br><br>
-                                        </td>
-                                    </tr>
-                                     <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="patienttype" class="form-label">Patient Type: </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="form-check-input" type="radio" disabled="disabled" name="patienttype" id="perpetrator" value="perpetrator" '.($reportFormRow["patienttype"] == 'perpetrator' ? "checked" : "").'>
-                                              <label class="form-check-label" for="perpetrator">
-                                                Perpetrator
-                                              </label>
-                                            <input class="form-check-input" type="radio" disabled="disabled" name="patienttype" id="victim" value="victim" '.($reportFormRow["patienttype"] == 'victim' ? "checked" : "").'>
-                                              <label class="form-check-label" for="victim">
-                                                Victims
-                                              </label>
-                                            <input class="form-check-input" type="radio" disabled="disabled" name="patienttype" id="bystander" value="bystander" '.($reportFormRow["patienttype"] == 'bystander' ? "checked" : "").'>
-                                              <label class="form-check-label" for="bystander">
-                                                Bystander
-                                              </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="casetype" class="form-label">Case Type </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="form-check-input" type="radio" disabled="disabled" name="casetype" id="CriticalCase" value="CriticalCase" '.($reportFormRow["casetype"] == 'CriticalCase' ? "checked" : "").'>
-                                              <label class="form-check-label" for="CriticalCase">
-                                                Crtical Case
-                                              </label>
-                                            <input class="form-check-input" type="radio" disabled="disabled" name="casetype" id="CounselingCaseOnly" value="CounselingCaseOnly" '.($reportFormRow["casetype"] == 'CounselingCaseOnly' ? "checked" : "").'>
-                                              <label class="form-check-label" for="CounselingCaseOnly">
-                                                Counselling Case Only
-                                        </td>
-                                    </tr>
-                                     <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="socialMedia" class="form-label">Social Media </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="form-check-input" type="radio" disabled="disabled" name="socialMedia" id="Instagram" value="Instagram" '.($reportFormRow["socialmedia"] == 'Instagram' ? "checked" : "").'>
-                                              <label class="form-check-label" for="Instagram">
-                                                Instagram
-                                              </label>
-                                            <input class="form-check-input" type="radio" disabled="disabled" name="socialMedia" id="Facebook" value="Facebook" '.($reportFormRow["socialmedia"] == 'Facebook' ? "checked" : "").'>
-                                              <label class="form-check-label" for="Facebook">
-                                                Facebook
-                                               </label>
-                                            <input class="form-check-input" type="radio" disabled="disabled" name="socialMedia" id="Whatsapp" value="Whatsapp" '.($reportFormRow["socialmedia"] == 'Whatsapp' ? "checked" : "").'>
-                                              <label class="form-check-label" for="Whatsapp">
-                                                Whatsapp
-                                             </label>
-                                            <input class="form-check-input" type="radio" disabled="disabled" name="socialMedia" id="Twitter" value="Twitter" '.($reportFormRow["socialmedia"] == 'Twitter' ? "checked" : "").'>
-                                              <label class="form-check-label" for="Twitter">
-                                                Twitter
-                                             </label>
-                                            <input class="form-check-input" type="radio" disabled="disabled" name="socialMedia" id="Others" value="Others" '.($reportFormRow["socialmedia"] == 'Others' ? "checked" : "").'>
-                                              <label class="form-check-label" for="Others">
-                                              Others
-                                             </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="Category" class="form-label">Category</label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="form-check-input" type="checkbox" disabled="disabled" name="Harrasment" value="DiscriminatoryHarrasment" id="DiscriminatoryHarrasment"  '.($reportFormRow["discriminatoryharrasment"] == 'DiscriminatoryHarrasment' ? "checked" : "").'>
-                                              <label class="form-check-label" for="DiscriminatoryHarrasment">
-                                              Discriminatory Harrasment
-                                             </label>
-                                             <input class="form-check-input" type="checkbox" disabled="disabled" name="SexualHarrasement" value="Sexual Harrasement" id="SexualHarrasement" '.($reportFormRow["sexualharrasement"] == 'Sexual Harrasement' ? "checked" : "").'>
-                                              <label class="form-check-label" for="SexualHarrasement">
-                                              Sexual Harrasement
-                                             </label>
-                                             <input class="form-check-input" type="checkbox" disabled="disabled" name="CyberBullying" value="Cyber Bullying" id="CyberBullying" '.($reportFormRow["cyberbullying"] == 'Cyber Bullying' ? "checked" : "").'>
-                                              <label class="form-check-label" for="CyberBullying">
-                                              Cyber Bullying
-                                             </label>
-                                              <input class="form-check-input" type="checkbox" disabled="disabled" name="RelationshipBreakdown" value="RelationshipBreakdown" id="RelationshipBreakdown" '.($reportFormRow["relationshipbreakdown"] == 'RelationshipBreakdown' ? "checked" : "").'>
-                                              <label class="form-check-label" for="RelationshipBreakdown">
-                                              Relationship Breakdown
-                                             </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="Effects" class="form-label">Effects</label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="form-check-input" type="checkbox" disabled="disabled" name="PanicAttacks" value="PanicAttacks" id="PanicAttacks" id="RelationshipBreakdown" '.($reportFormRow["panicattacks"] == 'PanicAttacks' ? "checked" : "").'>
-                                              <label class="form-check-label" for="PanicAttacks">
-                                              Panic Attacks
-                                             </label>
-                                             <input class="form-check-input" type="checkbox" disabled="disabled" name="Anxiety" value="Anxiety" id="Anxiety" id="RelationshipBreakdown" '.($reportFormRow["anxiety"] == 'Anxiety' ? "checked" : "").'>
-                                              <label class="form-check-label" for="Anxiety">
-                                              Anxiety
-                                             </label>
-                                             <input class="form-check-input" type="checkbox" disabled="disabled" name="Depression" value="Depression" id="Depression" id="RelationshipBreakdown" '.($reportFormRow["depression"] == 'Depression' ? "checked" : "").'>
-                                              <label class="form-check-label" for="Depression">
-                                              Depression
-                                             </label>
-                                        </td>
-                                    </tr>
-                                   <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="casetype" class="form-label">Comments </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="input-text form-check-input" type="text" name="Comments" id="Comments" readonly="readonly" value="'.$reportFormRow["comments"].'">
-                                        </td>
-                                    </tr>
-                                </table>
-                            </form>
-                        </div>
-                    </center>
-                    <br><br>
-                </div>
-            </div>
-            ';
-        }
-        ELSE IF(isset($action) && $action == "report"){
-            echo '
-            <div id="popup1" class="overlay">
-                <div class="popup">
-                    <center>
-                        <a class="close" href="patients.php">&times;</a>
-                        <div class="content"></div>
-                        <div style="display: flex;justify-content: center;">
-                            <form name="reportForm" id="idForm" action="" method="POST">
-                                <input type="hidden" name="patientid" id="patientid" value="'.$id.'">
-                                <input type="hidden" name="doctorid" id="doctorid" value="'.$useremail.'">
-                                <table width="80%" class="sub-table scrolldown add-doc-form-container" border="0">
-                                    <tr>
-                                        <td>
-                                            <p style="padding: 0;margin: 0;text-align: left;font-size: 25px;font-weight: 500;">Add Details</p><br><br>
-                                        </td>
-                                    </tr>
-                                     <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="patienttype" class="form-label">Patient Type: </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="form-check-input" type="radio" name="patienttype" id="perpetrator" value="perpetrator">
-                                              <label class="form-check-label" for="perpetrator">
-                                                Perpetrator
-                                              </label>
-                                            <input class="form-check-input" type="radio" name="patienttype" id="victim" value="victim">
-                                              <label class="form-check-label" for="victim">
-                                                Victims
-                                              </label>
-                                            <input class="form-check-input" type="radio" name="patienttype" id="bystander" value="bystander">
-                                              <label class="form-check-label" for="bystander">
-                                                Bystander
-                                              </label>
-                                        </td>
-                                    </tr>
 
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="casetype" class="form-label">Case Type </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="form-check-input" type="radio" name="casetype" id="CriticalCase" value="CriticalCase">
-                                              <label class="form-check-label" for="CriticalCase">
-                                                Crtical Case
-                                              </label>
-                                            <input class="form-check-input" type="radio" name="casetype" id="CounselingCaseOnly" value="CounselingCaseOnly">
-                                              <label class="form-check-label" for="CounselingCaseOnly">
-                                                Counselling Case Only
-                                             
-                                        </td>
-                                    </tr>
-
-
-                                     <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="socialMedia" class="form-label">Social Media </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="form-check-input" type="radio" name="socialMedia" id="Instagram" value="Instagram">
-                                              <label class="form-check-label" for="Instagram">
-                                                Instagram
-                                              </label>
-                                            <input class="form-check-input" type="radio" name="socialMedia" id="Facebook" value="Facebook">
-                                              <label class="form-check-label" for="Facebook">
-                                                Facebook
-                                               </label>
-                                            <input class="form-check-input" type="radio" name="socialMedia" id="Whatsapp" value="Whatsapp">
-                                              <label class="form-check-label" for="Whatsapp">
-                                                Whatsapp
-                                             </label>
-                                            <input class="form-check-input" type="radio" name="socialMedia" id="Twitter" value="Twitter">
-                                              <label class="form-check-label" for="Twitter">
-                                                Twitter
-                                             </label>
-                                            <input class="form-check-input" type="radio" name="socialMedia" id="Others" value="Others">
-                                              <label class="form-check-label" for="Others">
-                                              Others
-                                             </label>
-                                        </td>
-                                    </tr>
-
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="Category" class="form-label">Category</label>
-                                        </td>
-                                    </tr>
-
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="form-check-input" type="checkbox" name="Harrasment" value="DiscriminatoryHarrasment" id="DiscriminatoryHarrasment" >
-                                              <label class="form-check-label" for="DiscriminatoryHarrasment">
-                                              Discriminatory Harrasment
-                                             </label>
-                                             <input class="form-check-input" type="checkbox" name="SexualHarrasement" value="Sexual Harrasement" id="SexualHarrasement">
-                                              <label class="form-check-label" for="SexualHarrasement">
-                                              Sexual Harrasement
-                                             </label>
-                                             <input class="form-check-input" type="checkbox" name="CyberBullying" value="Cyber Bullying" id="CyberBullying">
-                                              <label class="form-check-label" for="CyberBullying">
-                                              Cyber Bullying
-                                             </label>
-                                              <input class="form-check-input" type="checkbox" name="RelationshipBreakdown" value="RelationshipBreakdown" id="RelationshipBreakdown">
-                                              <label class="form-check-label" for="RelationshipBreakdown">
-                                              Relationship Breakdown
-                                             </label>
-                                          
-                                        </td>
-                                    </tr>
-
-
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="Effects" class="form-label">Effects</label>
-                                        </td>
-                                    </tr>
-
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="form-check-input" type="checkbox" name="PanicAttacks" value="PanicAttacks" id="PanicAttacks">
-                                              <label class="form-check-label" for="PanicAttacks">
-                                              Panic Attacks
-                                             </label>
-                                             <input class="form-check-input" type="checkbox" name="Anxiety" value="Anxiety" id="Anxiety">
-                                              <label class="form-check-label" for="Anxiety">
-                                              Anxiety
-                                             </label>
-                                             <input class="form-check-input" type="checkbox" name="Depression" value="Depression" id="Depression">
-                                              <label class="form-check-label" for="Depression">
-                                              Depression
-                                             </label>
-                                          
-                                        </td>
-                                    </tr>
-
-                                   <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="casetype" class="form-label">Comments </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input class="input-text form-check-input" type="text" name="Comments" id="Comments" placeholder="Please write your comments here...">
-                                             
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td colspan="2">
-                                            <a href="patients.php" style="margin-left:470px; margin-top:50px;"><input type="submit" value="Add" name="addReport" class="login-btn btn-primary-soft btn"></a>
-                                        </td>
-                                    </tr>
-                                </table>
-                            </form>
-                        </div>
-                    </center>
-                    <br><br>
-                </div>
-            </div>
-            ';
-        } 
-    };
-
-?>
-</div>
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

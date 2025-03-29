@@ -1,275 +1,605 @@
+<?php
+require_once("../connection.php");
+session_start();
+
+if (!isset($_SESSION["user"]) || $_SESSION["usertype"] != 'd') {
+    header("location: ../login.php");
+    exit();
+}
+
+// Initialize variables with default values
+$username = '';
+$userid = 0;
+$total_patients = 0;
+$pending_appointments = 0;
+$today_appointments = null;
+$upcoming_schedule = null;
+$error_messages = [];
+$recent_patients = null;
+$monthly_sessions = 0;
+
+try {
+    // Get doctor info
+    $useremail = $_SESSION["user"];
+    $userrow = $database->query("SELECT * FROM doctor WHERE docemail='$useremail'");
+    if (!$userrow) {
+        throw new Exception("Error fetching doctor information");
+    }
+    $userfetch = $userrow->fetch_assoc();
+    $userid = $userfetch["docid"];
+    $username = $userfetch["docname"];
+
+    // Get today's appointments with patient details
+    $today = date('Y-m-d');
+    $today_appointments_query = "
+        SELECT 
+            a.*,
+            p.pname,
+            p.pemail,
+            p.age,
+            (SELECT COUNT(*) FROM appointment WHERE pid = p.pid AND docid = ?) as visit_count
+        FROM appointment a 
+        INNER JOIN patient p ON a.pid = p.pid 
+        WHERE a.docid = ? 
+        AND a.appodate = ? 
+        ORDER BY a.appotime ASC
+    ";
+    $stmt = $database->prepare($today_appointments_query);
+    if (!$stmt) {
+        throw new Exception("Error preparing appointments query");
+    }
+    $stmt->bind_param("iis", $userid, $userid, $today);
+    $stmt->execute();
+    $today_appointments = $stmt->get_result();
+
+    // Get recent patients with their last visit
+    $recent_patients_query = "
+        SELECT 
+            p.*,
+            MAX(a.appodate) as last_visit,
+            COUNT(DISTINCT a.apid) as total_visits
+        FROM patient p
+        INNER JOIN appointment a ON p.pid = a.pid
+        WHERE a.docid = ?
+        GROUP BY p.pid
+        ORDER BY last_visit DESC
+        LIMIT 5
+    ";
+    $stmt = $database->prepare($recent_patients_query);
+    if (!$stmt) {
+        throw new Exception("Error preparing recent patients query");
+    }
+    $stmt->bind_param("i", $userid);
+    $stmt->execute();
+    $recent_patients = $stmt->get_result();
+
+    // Get upcoming schedule for next 7 days
+    $next_week = date('Y-m-d', strtotime('+7 days'));
+    $upcoming_schedule_query = "
+        SELECT 
+            s.*,
+            COUNT(a.apid) as booked_count,
+            GROUP_CONCAT(p.pname SEPARATOR ', ') as patient_names
+        FROM schedule s 
+        LEFT JOIN appointment a ON s.scheduleid = a.scheduleid 
+        LEFT JOIN patient p ON a.pid = p.pid
+        WHERE s.docid = ? 
+        AND s.scheduledate BETWEEN ? AND ?
+        GROUP BY s.scheduleid 
+        ORDER BY s.scheduledate ASC, s.scheduletime ASC
+    ";
+    $stmt = $database->prepare($upcoming_schedule_query);
+    if (!$stmt) {
+        throw new Exception("Error preparing schedule query");
+    }
+    $stmt->bind_param("iss", $userid, $today, $next_week);
+    $stmt->execute();
+    $upcoming_schedule = $stmt->get_result();
+
+    // Get total active patients
+    $total_patients_query = "
+        SELECT COUNT(DISTINCT p.pid) as count 
+        FROM patient p 
+        INNER JOIN appointment a ON p.pid = a.pid 
+        WHERE a.docid = ?
+    ";
+    $stmt = $database->prepare($total_patients_query);
+    if (!$stmt) {
+        throw new Exception("Error preparing patient count query");
+    }
+    $stmt->bind_param("i", $userid);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $total_patients = $result->fetch_assoc()['count'];
+
+    // Get monthly statistics
+    $month_start = date('Y-m-01');
+    $month_end = date('Y-m-t');
+    $monthly_stats_query = "
+        SELECT COUNT(*) as count
+        FROM appointment 
+        WHERE docid = ? 
+        AND appodate BETWEEN ? AND ?
+        AND status = 1
+    ";
+    $stmt = $database->prepare($monthly_stats_query);
+    if (!$stmt) {
+        throw new Exception("Error preparing monthly stats query");
+    }
+    $stmt->bind_param("iss", $userid, $month_start, $month_end);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $monthly_sessions = $result->fetch_assoc()['count'];
+
+    // Get pending appointments
+    $pending_query = "
+        SELECT COUNT(*) as count 
+        FROM appointment 
+        WHERE docid = ? AND status = 0
+    ";
+    $stmt = $database->prepare($pending_query);
+    if (!$stmt) {
+        throw new Exception("Error preparing pending appointments query");
+    }
+    $stmt->bind_param("i", $userid);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $pending_appointments = $result->fetch_assoc()['count'];
+
+} catch (Exception $e) {
+    $error_messages[] = $e->getMessage();
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../css/animations.css">  
-    <link rel="stylesheet" href="../css/main.css">  
-    <link rel="stylesheet" href="../css/admin.css">
-
-    <title>Dashboard</title>
+    <title>Doctor Dashboard - MindCheck</title>
+    <link rel="stylesheet" href="../css/animations.css">
+    <link rel="stylesheet" href="../css/main.css">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .dashbord-tables,.doctor-header{
-            animation: transitionIn-Y-over 0.5s;
+        :root {
+            --primary: #1977cc;
+            --secondary: #2c4964;
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --light: #f8f9fa;
+            --dark: #343a40;
         }
-        .filter-container{
-            animation: transitionIn-Y-bottom  0.5s;
+        body { 
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-        .sub-table,#anim{
-            animation: transitionIn-Y-bottom 0.5s;
+        .dashboard-header {
+            background: var(--primary);
+            padding: 1rem;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .doctor-header{
-            animation: transitionIn-Y-over 0.5s;
+        .main-content {
+            margin-top: 80px;
+            padding: 2rem;
+        }
+        .welcome-banner {
+            background: linear-gradient(135deg, var(--primary), #3291e6);
+            color: white;
+            padding: 2rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .welcome-banner::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 300px;
+            height: 100%;
+            background: url('../img/medical-pattern.png') no-repeat center right;
+            opacity: 0.1;
+        }
+        .welcome-banner h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        .welcome-banner p {
+            opacity: 0.9;
+            margin-bottom: 1.5rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        .stat-card .icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 1rem;
+        }
+        .stat-card .icon.blue {
+            background: rgba(25,119,204,0.1);
+            color: var(--primary);
+        }
+        .stat-card .icon.green {
+            background: rgba(40,167,69,0.1);
+            color: var(--success);
+        }
+        .stat-card .icon.yellow {
+            background: rgba(255,193,7,0.1);
+            color: var(--warning);
+        }
+        .stat-card h3 {
+            font-size: 0.875rem;
+            color: var(--secondary);
+            margin: 0;
+        }
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--dark);
+            margin: 0.5rem 0;
+        }
+        .stat-card .trend {
+            font-size: 0.875rem;
+            color: var(--success);
+        }
+        .content-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+        .card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border: none;
+            margin-bottom: 1.5rem;
+        }
+        .card-header {
+            background: none;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 1.5rem;
+        }
+        .card-header h2 {
+            font-size: 1.25rem;
+            color: var(--secondary);
+            margin: 0;
+        }
+        .card-body {
+            padding: 1.5rem;
+        }
+        .appointment-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            background: var(--light);
+            transition: all 0.3s ease;
+        }
+        .appointment-item:hover {
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .appointment-item .time {
+            background: var(--primary);
+            color: white;
+            padding: 0.5rem;
+            border-radius: 8px;
+            min-width: 90px;
+            text-align: center;
+            margin-right: 1rem;
+        }
+        .appointment-item .info {
+            flex: 1;
+        }
+        .appointment-item .info h3 {
+            font-size: 1rem;
+            margin: 0 0 0.25rem 0;
+            color: var(--secondary);
+        }
+        .appointment-item .info p {
+            font-size: 0.875rem;
+            color: #666;
+            margin: 0;
+        }
+        .appointment-item .status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .status-confirmed {
+            background: rgba(40,167,69,0.1);
+            color: var(--success);
+        }
+        .status-pending {
+            background: rgba(255,193,7,0.1);
+            color: var(--warning);
+        }
+        .btn-action {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+        }
+        .btn-primary-soft {
+            background: rgba(25,119,204,0.1);
+            color: var(--primary);
+        }
+        .btn-primary-soft:hover {
+            background: var(--primary);
+            color: white;
+        }
+        .patient-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .patient-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .patient-item:last-child {
+            border-bottom: none;
+        }
+        .patient-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            color: var(--primary);
+        }
+        .patient-info {
+            flex: 1;
+        }
+        .patient-info h4 {
+            font-size: 0.875rem;
+            margin: 0 0 0.25rem 0;
+            color: var(--secondary);
+        }
+        .patient-info p {
+            font-size: 0.75rem;
+            color: #666;
+            margin: 0;
+        }
+        .visit-count {
+            background: rgba(25,119,204,0.1);
+            color: var(--primary);
+            padding: 0.25rem 0.5rem;
+            border-radius: 15px;
+            font-size: 0.75rem;
+        }
+        @media (max-width: 992px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
-    
 </head>
 <body>
-    <?php
+    <?php include('header.php'); ?>
 
-    session_start();  //session check
+    <div class="container-fluid">
+            <?php if (!empty($error_messages)): ?>
+                <?php foreach ($error_messages as $message): ?>
+                    <div class="alert alert-danger">
+                        <i class='bx bx-error-circle'></i>
+                        <?php echo htmlspecialchars($message); ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
 
-    if(isset($_SESSION["user"])){
-        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='d'){
-            header("location: ../login.php");
-        }else{
-            $useremail=$_SESSION["user"];
-        }
+            <div class="welcome-banner">
+                <h1>Welcome back, Dr. <?php echo htmlspecialchars($username); ?>!</h1>
+                <p>Here's your practice overview for today, <?php echo date('F d, Y'); ?></p>
+                <div class="d-flex gap-3">
+                    <a href="appointments.php" class="btn btn-light">
+                        <i class='bx bx-calendar-plus'></i> New Appointment
+                    </a>
+                    <a href="schedule.php" class="btn btn-outline-light">
+                        <i class='bx bx-time'></i> Manage Schedule
+                    </a>
+                </div>
+            </div>
 
-    }else{
-        header("location: ../login.php");
-    }
-    
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="icon blue">
+                        <i class='bx bx-group'></i>
+                    </div>
+                    <h3>Total Patients</h3>
+                    <div class="value"><?php echo $total_patients; ?></div>
+                    <div class="trend">
+                        <i class='bx bx-user-plus'></i> Active Patients
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="icon green">
+                        <i class='bx bx-calendar-check'></i>
+                    </div>
+                    <h3>Today's Appointments</h3>
+                    <div class="value"><?php echo $today_appointments ? $today_appointments->num_rows : 0; ?></div>
+                    <div class="trend">
+                        <i class='bx bx-calendar'></i> <?php echo date('d M Y'); ?>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="icon yellow">
+                        <i class='bx bx-time-five'></i>
+                    </div>
+                    <h3>Monthly Sessions</h3>
+                    <div class="value"><?php echo $monthly_sessions; ?></div>
+                    <div class="trend">
+                        <i class='bx bx-calendar'></i> This Month
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="icon blue">
+                        <i class='bx bx-note'></i>
+                    </div>
+                    <h3>Pending Appointments</h3>
+                    <div class="value"><?php echo $pending_appointments; ?></div>
+                    <div class="trend">
+                        <i class='bx bx-time'></i> Awaiting Confirmation
+                    </div>
+                </div>
+            </div>
 
-    //import database
-    include("../connection.php");
-    $userrow = $database->query("select * from doctor where docemail='$useremail'");
-    $userfetch=$userrow->fetch_assoc();
-    $userid= $userfetch["docid"];
-    $username=$userfetch["docname"];
-    
-    ?>
-    <div class="container">
-        
-        <?php include("../header.php"); ?>
-        
-        <div class="dash-body" style="margin-top: 15px">
-            <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;" >
-                        
-                        <tr >
-                            
-                            <td colspan="1" class="nav-bar" >
-                            <p style="font-size: 23px;padding-left:12px;font-weight: 600;margin-left:20px;">     Dashboard</p>
-                          
-                            </td>
-                            <td width="25%">
-
-                            </td>
-                            <td width="15%">
-                                <p style="font-size: 14px;color: rgb(119, 119, 119);padding: 0;margin: 0;text-align: right;">
-                                    Today's Date
-                                </p>
-                                <p class="heading-sub12" style="padding: 0;margin: 0;">
-                                    <?php 
-                                date_default_timezone_set('Asia/Karachi');
-        
-                                $today = date('Y-m-d');
-                                echo $today;
-
-
-                                $patientrow = $database->query("select * from  patient;");
-                                $doctorrow = $database->query("select * from  doctor;");
-                                $appointmentrow = $database->query("select * from appointment where appodate>='$today';");
-                                $schedulerow = $database->query("select * from schedule where scheduledate='$today';");
-
-                                ?>
-                                </p>
-                            </td>
-                            <td width="10%">
-                                <button  class="btn-label"  style="display: flex;justify-content: center;align-items: center;"><img src="../img/calendar.svg" width="100%"></button>
-                            </td>
-        
-        
-                        </tr>
-                <tr>
-                    <td colspan="4" >
-                        
-                    <center>
-                    <table class="filter-container doctor-header" style="border: none;width:95%" border="0" >
-                    <tr>
-                        <td >
-                            <h3>Welcome!</h3>
-                            <h1><?php echo $username  ?>.</h1>
-                            <p>"Your Path to Healing and Growth Begins Here."<br>
-                            You can view your daily schedule, Reach Patient Appointment at home!<br><br>
-                            </p>
-                            <a href="appointment.php" class="non-style-link"><button class="btn-primary btn" style="width:30%">View My Appointments</button></a>
-                            <br>
-                            <br>
-                        </td>
-                    </tr>
-                    </table>
-                    </center>
-                    
-                </td>
-                </tr>
-                <tr>
-                    <td colspan="4">
-                        <table border="0" width="100%"">
-                            <tr>
-                                <td width="50%">
-
-                                    <center>
-                                        <table class="filter-container" style="border: none;" border="0">
-                                            <tr>
-                                                <td colspan="4">
-                                                    <p style="font-size: 20px;font-weight:600;padding-left: 12px;">Status</p>
-                                                </td>
-                                            </tr>
-                                            <tr>
-                                                <td style="width: 25%;">
-                                                    <div  class="dashboard-items"  style="padding:20px;margin:auto;width:95%;display: flex">
-                                                        <div>
-                                                                <div class="h1-dashboard">
-                                                                    <?php    echo $doctorrow->num_rows  ?>
-                                                                </div><br>
-                                                                <div class="h3-dashboard">
-                                                                    All Doctors &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                                                                </div>
-                                                        </div>
-                                                                <div class="btn-icon-back dashboard-icons" style="background-image: url('../img/icons/doctors-hover.svg');"></div>
-                                                    </div>
-                                                </td>
-                                                <td style="width: 25%;">
-                                                    <div  class="dashboard-items"  style="padding:20px;margin:auto;width:95%;display: flex;">
-                                                        <div>
-                                                                <div class="h1-dashboard">
-                                                                    <?php    echo $patientrow->num_rows  ?>
-                                                                </div><br>
-                                                                <div class="h3-dashboard">
-                                                                    All Patient &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                                                                </div>
-                                                        </div>
-                                                                <div class="btn-icon-back dashboard-icons" style="background-image: url('../img/icons/patient-hover.svg');"></div>
-                                                    </div>
-                                                </td>
-                                                </tr>
-                                                <tr>
-                                                <td style="width: 25%;">
-                                                    <div  class="dashboard-items"  style="padding:20px;margin:auto;width:95%;display: flex; ">
-                                                        <div>
-                                                                <div class="h1-dashboard" >
-                                                                    <?php    echo $appointmentrow ->num_rows  ?>
-                                                                </div><br>
-                                                                <div class="h3-dashboard" >
-                                                                    New Booking &nbsp;&nbsp;
-                                                                </div>
-                                                        </div>
-                                                                <div class="btn-icon-back dashboard-icons" style="margin-left: 0px;background-image: url('../img/icons/book-hover.svg');"></div>
-                                                    </div>
-                                                    
-                                                </td>
-
-                                                <td style="width: 25%;">
-                                                    <div  class="dashboard-items"  style="padding:20px;margin:auto;width:95%;display: flex;padding-top:21px;padding-bottom:21px;">
-                                                        <div>
-                                                                <div class="h1-dashboard">
-                                                                    <?php    echo $schedulerow ->num_rows  ?>
-                                                                </div><br>
-                                                                <div class="h3-dashboard" style="font-size: 15px">
-                                                                    Today Sessions
-                                                                </div>
-                                                        </div>
- <div class="btn-icon-back dashboard-icons" style="background-image: url('../img/icons/session-iceblue.svg');"></div>
-   </div>
- </td>
- </tr>
-                                        </table>
-                                    </center>
-
-                                </td>
-                                <td>
-
-                                    <p id="anim" style="font-size: 20px;font-weight:600;padding-left: 40px;">Your Up Coming Sessions until Next week</p>
-                                    <center>
-                                        <div class="abc scroll" style="height: 250px;padding: 0;margin: 0;">
-                                        <table width="85%" class="sub-table scrolldown" border="0" >
-                                        <thead>
-                                            
-                                        <tr>
-                                                <th class="table-headin">
-                                                    
-                                                Session Title
-                                                
-                                                </th>
-                                                
-                                                <th class="table-headin">
-                                                Sheduled Date
-                                                </th>
-                                                <th class="table-headin">
-                                                    
-                                                     Time
-                                                    
-                                                </th>
-                                                    
-                                                </tr>
-                                        </thead>
-                                        <tbody>                 
-                                            <?php
-$nextweek=date("Y-m-d",strtotime("+1 week"));
-$sqlmain= "select schedule.scheduleid,schedule.title,doctor.docname,schedule.scheduledate,schedule.scheduletime,schedule.nop from schedule inner join doctor on schedule.docid=doctor.docid  where schedule.scheduledate>='$today' and schedule.scheduledate<='$nextweek' and doctor.docid='$userid' order by schedule.scheduledate desc"; 
-                                                $result= $database->query($sqlmain);
- if($result->num_rows==0){
-   echo '<tr>
- <td colspan="4"><br><br><br><br><center><img src="../img/notfound.svg" width="25%"><br> <p class="heading-main12" style="margin-left: 45px;font-size:20px;color:rgb(49, 49, 49)">We  couldnt find anything related to your keywords !</p><a class="non-style-link" href="schedule.php"><button  class="login-btn btn-primary-soft btn"  style="display: flex;justify-content: center;align-items: center;margin-left:20px;">&nbsp; Show all Sessions &nbsp;</font></button>
- </a>
-                                                    </center>
-                                                    <br><br><br><br>
-                                                    </td>
-                                                    </tr>'; }
-                                                else{
-                                                for ( $x=0; $x<$result->num_rows;$x++){
-                                                    $row=$result->fetch_assoc();
-                                                    $scheduleid=$row["scheduleid"];
-                                                    $title=$row["title"];
-                                                    $docname=$row["docname"];
-                                                    $scheduledate=$row["scheduledate"];
-                                                    $scheduletime=$row["scheduletime"];
-                                                    $nop=$row["nop"];
-                                                    echo '<tr>
-                                                        <td style="padding:20px;"> &nbsp;'.
-                                                        substr($title,0,30)
-                                                        .'</td>
-                                                        <td style="padding:20px;font-size:13px;">
-                                                        '.substr($scheduledate,0,10).'
-                                                        </td>
-                                                        <td style="text-align:center;">
-                                                            '.substr($scheduletime,0,5).'
-                                                        </td>
-
-                                                    </tr>';
-                                                    
-                                                }
-                                            }
-                                                 
-                                            ?>
-                 
-                                            </tbody>
-                
-                                        </table>
+            <div class="content-grid">
+                <div class="appointments-section">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h2>Today's Schedule</h2>
+                            <a href="appointments.php" class="btn-action btn-primary-soft">
+                                <i class='bx bx-calendar'></i> View All
+                            </a>
+                        </div>
+                        <div class="card-body">
+                            <?php if ($today_appointments && $today_appointments->num_rows > 0): ?>
+                                <?php while($row = $today_appointments->fetch_assoc()): ?>
+                                    <div class="appointment-item">
+                                        <div class="time">
+                                            <?php echo htmlspecialchars(date('h:i A', strtotime($row['appotime']))); ?>
                                         </div>
-                                        </center>
+                                        <div class="info">
+                                            <h3><?php echo htmlspecialchars($row['pname']); ?></h3>
+                                            <p>
+                                                <i class='bx bx-envelope'></i> <?php echo htmlspecialchars($row['pemail']); ?>
+                                                <?php if(isset($row['visit_count'])): ?>
+                                                    <span class="ms-2">
+                                                        <i class='bx bx-history'></i> Visit #<?php echo (int)$row['visit_count']; ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                            </p>
+                                        </div>
+                                        <span class="status <?php echo $row['status'] == 1 ? 'status-confirmed' : 'status-pending'; ?>">
+                                            <?php echo $row['status'] == 1 ? 'Confirmed' : 'Pending'; ?>
+                                        </span>
+                                    </div>
+                                <?php endwhile; ?>
+                            <?php else: ?>
+                                <div class="text-center py-4">
+                                    <i class='bx bx-calendar-x' style="font-size: 3rem; color: #dee2e6;"></i>
+                                    <p class="mt-2 text-muted">No appointments scheduled for today</p>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
 
-                                </td>
-                            </tr>
-                        </table>
-                    </td>
-                <tr>
-            </table>
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h2>Upcoming Schedule</h2>
+                            <a href="schedule.php" class="btn-action btn-primary-soft">
+                                <i class='bx bx-time'></i> Manage
+                            </a>
+                        </div>
+                        <div class="card-body">
+                            <?php if ($upcoming_schedule && $upcoming_schedule->num_rows > 0): ?>
+                                <?php while($row = $upcoming_schedule->fetch_assoc()): ?>
+                                    <div class="appointment-item">
+                                        <div class="time">
+                                            <?php echo htmlspecialchars(date('d M', strtotime($row['scheduledate']))); ?>
+                                            <div class="small"><?php echo htmlspecialchars(date('h:i A', strtotime($row['scheduletime']))); ?></div>
+                                        </div>
+                                        <div class="info">
+                                            <h3><?php echo htmlspecialchars($row['title']); ?></h3>
+                                            <p>
+                                                <i class='bx bx-user'></i> 
+                                                <?php echo (int)$row['booked_count']; ?>/<?php echo (int)$row['nop']; ?> Slots
+                                                <?php if($row['patient_names']): ?>
+                                                    <br><small class="text-muted"><?php echo htmlspecialchars($row['patient_names']); ?></small>
+                                                <?php endif; ?>
+                                            </p>
+                                        </div>
+                                        <a href="view_schedule.php?id=<?php echo (int)$row['scheduleid']; ?>" class="btn-action btn-primary-soft">
+                                            <i class='bx bx-show'></i>
+                                        </a>
+                                    </div>
+                                <?php endwhile; ?>
+                            <?php else: ?>
+                                <div class="text-center py-4">
+                                    <i class='bx bx-time' style="font-size: 3rem; color: #dee2e6;"></i>
+                                    <p class="mt-2 text-muted">No upcoming sessions scheduled</p>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="side-section">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h2>Recent Patients</h2>
+                            <a href="patients.php" class="btn-action btn-primary-soft">
+                                <i class='bx bx-group'></i> All Patients
+                            </a>
+                        </div>
+                        <div class="card-body">
+                            <?php if ($recent_patients && $recent_patients->num_rows > 0): ?>
+                                <ul class="patient-list">
+                                    <?php while($row = $recent_patients->fetch_assoc()): ?>
+                                        <li class="patient-item">
+                                            <div class="patient-avatar">
+                                                <i class='bx bx-user'></i>
+                                            </div>
+                                            <div class="patient-info">
+                                                <h4><?php echo htmlspecialchars($row['pname']); ?></h4>
+                                                <p>Last visit: <?php echo date('d M Y', strtotime($row['last_visit'])); ?></p>
+                                            </div>
+                                            <span class="visit-count">
+                                                <?php echo (int)$row['total_visits']; ?> visits
+                                            </span>
+                                        </li>
+                                    <?php endwhile; ?>
+                                </ul>
+                            <?php else: ?>
+                                <div class="text-center py-4">
+                                    <i class='bx bx-user-x' style="font-size: 3rem; color: #dee2e6;"></i>
+                                    <p class="mt-2 text-muted">No recent patients</p>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-    </div>
 
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

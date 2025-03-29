@@ -37,4 +37,3 @@ if (isset($_SERVER['HTTP_COOKIE'])) {
 // Use absolute path for redirection
 header("Location: " . $root_path . "index.php");
 exit();
-?>

@@ -41,8 +41,10 @@ if ($_POST) {
         if ($result->num_rows == 1) {
             $error = '<label class="form-label" style="color:rgb(255, 62, 62); text-align:center;">An account with this email already exists.</label>';
         } else {
-            $database->query("INSERT INTO patient (pemail, ppassword, pname) VALUES ('$email', '$newpassword', '$name');");
-            $database->query("INSERT INTO webuser VALUES ('$email', 'p')");
+            // First insert into webuser table
+            $database->query("INSERT INTO webuser (email, usertype) VALUES ('$email', 'p')");
+            // Then insert into patient table
+            $database->query("INSERT INTO patient (pemail, ppassword, pname) VALUES ('$email', '$newpassword', '$name')");
 
             // Redirect to login page after successful account creation
             header('Location: login.php');

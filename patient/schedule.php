@@ -7,219 +7,193 @@ if (!isset($_SESSION["user"]) || $_SESSION["usertype"] != 'p') {
 
 include("../connection.php");
 
-// Get patient ID from session
-$useremail = $_SESSION["user"];
-$userrow = $database->query("SELECT * FROM patient WHERE pemail='$useremail'");
-$userfetch = $userrow->fetch_assoc();
-$pid = $userfetch["pid"];
-
-// Get doctor ID from URL if provided
-$doctor_id = isset($_GET['doctor']) ? $_GET['doctor'] : null;
-
-// Get all available schedules
-$schedule_query = "SELECT s.*, d.docname, d.specialties 
-                  FROM schedule s 
-                  JOIN doctor d ON s.docid = d.docid 
-                  WHERE s.scheduledate >= CURDATE()";
-
-if ($doctor_id) {
-    $schedule_query .= " AND s.docid = $doctor_id";
+// Get patient ID
+$email = $_SESSION["user"];
+$result = $database->query("SELECT pid FROM patient WHERE pemail='$email'");
+if ($result && $result->num_rows > 0) {
+    $row = $result->fetch_assoc();
+    $pid = $row['pid'];
+} else {
+    die("Error: Patient not found");
 }
 
-$schedule_query .= " ORDER BY s.scheduledate ASC, s.scheduletime ASC";
-$result = $database->query($schedule_query);
+// Get all appointments for this patient
+$query = "SELECT a.*, s.scheduledate, s.scheduletime, s.title, d.docname, d.specialties
+          FROM appointment a
+          JOIN schedule s ON a.scheduleid = s.scheduleid
+          JOIN doctor d ON s.docid = d.docid
+          WHERE a.pid = ?
+          ORDER BY s.scheduledate DESC, s.scheduletime DESC";
 
-// Handle appointment booking
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['schedule_id'])) {
-    $schedule_id = $_POST['schedule_id'];
-    
-    // Check if slot is still available
-    $check_query = "SELECT * FROM appointment WHERE scheduleid = $schedule_id";
-    $check_result = $database->query($check_query);
-    
-    if ($check_result->num_rows < 1) {
-        // Create new appointment
-        $apponum = 1;
-        $date = date('Y-m-d');
-        
-        $insert_query = "INSERT INTO appointment (pid, apponum, scheduleid, appodate) 
-                        VALUES ($pid, $apponum, $schedule_id, '$date')";
-        
-        if ($database->query($insert_query)) {
-            $success = "Appointment booked successfully!";
-            // Refresh the schedules list
-            $result = $database->query($schedule_query);
-        } else {
-            $error = "Error booking appointment. Please try again.";
-        }
-    } else {
-        $error = "Sorry, this slot is no longer available.";
-    }
-}
+$stmt = $database->prepare($query);
+$stmt->bind_param("i", $pid);
+$stmt->execute();
+$result = $stmt->get_result();
+
+// Get success message if any
+$success = isset($_GET['success']) ? $_GET['success'] : '';
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Schedule Appointment - MindCheck</title>
-    <link rel="stylesheet" href="../css/animations.css">
-    <link rel="stylesheet" href="../css/main.css">
-    <link rel="stylesheet" href="../css/admin.css">
+    <title>My Appointments - MindCheck</title>
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link rel="stylesheet" href="../css/main.css">
     <style>
         .schedule-container {
-            max-width: 1200px;
-            margin: 0 auto;
+            max-width: 1000px;
+            margin: 40px auto;
             padding: 20px;
         }
-        .page-title {
-            background: linear-gradient(45deg, #1977cc, #3291e6);
-            padding: 40px;
-            border-radius: 15px;
-            margin-bottom: 40px;
-            color: white;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        }
-        .page-title h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-        .schedule-grid {
+        .appointments-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 20px;
-            margin-top: 20px;
+            margin-top: 30px;
         }
-        .schedule-card {
+        .appointment-card {
             background: white;
-            border-radius: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
             overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
             transition: transform 0.3s ease;
         }
-        .schedule-card:hover {
-            transform: translateY(-5px);
+        .appointment-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
-        .schedule-header {
-            background: #1977cc;
-            color: white;
+        .appointment-header {
             padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .appointment-date {
             font-size: 1.2em;
+            color: #2c4964;
+            font-weight: 600;
+            margin: 0;
         }
-        .schedule-body {
-            padding: 20px;
+        .appointment-time {
+            color: #666;
+            margin: 5px 0 0;
         }
-        .schedule-info {
-            margin-bottom: 20px;
-        }
-        .schedule-info p {
-            margin: 10px 0;
-            color: #444;
-        }
-        .schedule-info i {
-            color: #1977cc;
-            margin-right: 10px;
-        }
-        .book-btn {
-            background: #1977cc;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            width: 100%;
-            font-size: 1em;
-            transition: all 0.3s ease;
-        }
-        .book-btn:hover {
-            background: #166ab5;
-        }
-        .book-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        .alert {
+        .appointment-body {
             padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
         }
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
+        .doctor-info {
+            margin-bottom: 15px;
         }
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
+        .doctor-name {
+            font-weight: 500;
+            color: #2c4964;
+            margin: 0;
         }
-        .no-schedules {
+        .doctor-specialty {
+            color: #666;
+            font-size: 0.9em;
+            margin: 5px 0;
+        }
+        .appointment-status {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+        .status-pending {
+            background: #fff8e1;
+            color: #ffa000;
+        }
+        .status-confirmed {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .status-completed {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        .status-cancelled {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .no-appointments {
             text-align: center;
-            padding: 40px;
+            padding: 40px 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
             color: #666;
         }
-        .no-schedules i {
+        .no-appointments i {
             font-size: 3em;
             color: #1977cc;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
-        @media (max-width: 768px) {
-            .schedule-grid {
-                grid-template-columns: 1fr;
-            }
+        .success-message {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .success-message i {
+            font-size: 1.5em;
         }
     </style>
 </head>
 <body>
-    <?php include("../header.php"); ?>
+    <?php include("header.php"); ?>
 
     <div class="schedule-container">
-        <div class="page-title">
-            <h1>Schedule an Appointment</h1>
-            <p>Choose from available time slots to book your appointment</p>
+        <h1>My Appointments</h1>
+
+        <?php if ($success == '1'): ?>
+        <div class="success-message">
+            <i class='bx bx-check-circle'></i>
+            <div>
+                <strong>Appointment Booked Successfully!</strong>
+                <p>Your appointment has been scheduled. The doctor will review and confirm it shortly.</p>
+            </div>
         </div>
-
-        <?php if(isset($success)): ?>
-            <div class="alert alert-success">
-                <?php echo $success; ?>
-            </div>
         <?php endif; ?>
 
-        <?php if(isset($error)): ?>
-            <div class="alert alert-error">
-                <?php echo $error; ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if($result && $result->num_rows > 0): ?>
-            <div class="schedule-grid">
-                <?php while($schedule = $result->fetch_assoc()): ?>
-                    <div class="schedule-card">
-                        <div class="schedule-header">
-                            Dr. <?php echo htmlspecialchars($schedule['docname']); ?>
-                        </div>
-                        <div class="schedule-body">
-                            <div class="schedule-info">
-                                <p><i class='bx bx-calendar'></i> Date: <?php echo date('F j, Y', strtotime($schedule['scheduledate'])); ?></p>
-                                <p><i class='bx bx-time'></i> Time: <?php echo date('g:i A', strtotime($schedule['scheduletime'])); ?></p>
-                                <p><i class='bx bx-briefcase-alt-2'></i> Specialization: <?php echo htmlspecialchars($schedule['specialties']); ?></p>
-                            </div>
-                            <form method="POST" action="">
-                                <input type="hidden" name="schedule_id" value="<?php echo $schedule['scheduleid']; ?>">
-                                <button type="submit" class="book-btn" <?php echo isset($schedule['booked']) ? 'disabled' : ''; ?>>
-                                    <?php echo isset($schedule['booked']) ? 'Booked' : 'Book Appointment'; ?>
-                                </button>
-                            </form>
-                        </div>
+        <?php if ($result->num_rows > 0): ?>
+        <div class="appointments-grid">
+            <?php while($appointment = $result->fetch_assoc()): 
+                $date = date('F j, Y', strtotime($appointment['scheduledate']));
+                $time = date('h:i A', strtotime($appointment['scheduletime']));
+                
+                $status_class = 'status-' . $appointment['status'];
+                $status_text = ucfirst($appointment['status']);
+            ?>
+            <div class="appointment-card">
+                <div class="appointment-header">
+                    <h2 class="appointment-date"><?php echo $date; ?></h2>
+                    <p class="appointment-time"><?php echo $time; ?></p>
+                </div>
+                <div class="appointment-body">
+                    <div class="doctor-info">
+                        <h3 class="doctor-name">Dr. <?php echo $appointment['docname']; ?></h3>
+                        <p class="doctor-specialty"><?php echo $appointment['specialties']; ?></p>
+                        <p><?php echo $appointment['title']; ?></p>
                     </div>
-                <?php endwhile; ?>
+                    <span class="appointment-status <?php echo $status_class; ?>">
+                        <?php echo $status_text; ?>
+                    </span>
+                </div>
             </div>
+            <?php endwhile; ?>
+        </div>
         <?php else: ?>
-            <div class="no-schedules">
-                <i class='bx bx-calendar-x'></i>
-                <h2>No available schedules</h2>
-                <p>There are currently no available appointment slots. Please check back later.</p>
-            </div>
+        <div class="no-appointments">
+            <i class='bx bx-calendar-x'></i>
+            <h2>No Appointments Yet</h2>
+            <p>You haven't scheduled any appointments yet.</p>
+            <a href="doctors.php" class="btn-primary">Find a Doctor</a>
+        </div>
         <?php endif; ?>
     </div>
 </body>
