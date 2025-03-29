@@ -8,7 +8,7 @@
      <div class="landingPage">
        <h1 style="color: white;">Mental Health Assessment for <br/> special children</h1>
       <!-- <h2 Style="color: white;">We are team of doctors making "Consistency and <br>perseverance which would lead to success."</h2> -->
-      <a href="login.php" class="btn-get-started scrollto">Get Started</a>
+      <a href="assessment.php" class="btn-get-started scrollto">Get Started</a>
      </div>
       
     </div>

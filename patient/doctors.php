@@ -1,198 +1,308 @@
 <?php
 
-    session_start();
-
-    if(isset($_SESSION["user"])){
-        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='p'){
-            header("location: ../login.php");
-        }else{
-            $useremail=$_SESSION["user"];
-        }
-
-    }else{
-        header("location: ../login.php");
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
     }
-    
-    include("patient_header_info.php");
-	
-	include("patient_header.php");
-    
+
+    if (!isset($_SESSION["user"]) || $_SESSION["usertype"] != 'p') {
+        header("location: ../login.php");
+        exit;
+    }
+
+    include("../connection.php");
+
+    // Get the base URL for the footer
+    $base_url = '../';
+
+    // Fetch all doctors
+    $query = "SELECT * FROM doctor ORDER BY docname";
+    $result = $database->query($query);
+
+    // Handle doctor profile view
+    $show_profile = false;
+    $profile_data = null;
+    if (isset($_GET['action']) && $_GET['action'] == 'view' && isset($_GET['id'])) {
+        $id = $_GET['id'];
+        $profile_query = "SELECT * FROM doctor WHERE docid='$id'";
+        $profile_result = $database->query($profile_query);
+        if ($profile_result && $profile_result->num_rows > 0) {
+            $show_profile = true;
+            $profile_data = $profile_result->fetch_assoc();
+        }
+    }
 ?>
-<section class="breadcrumbs">
-    <div class="container">
-        <div class="dash-body">
-            <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;margin-top:25px; ">
-                <tr >
-                    <td width="13%">
-                        <a href="doctors.php" ><button  class="login-btn btn-primary-soft btn btn-icon-back"  style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px"><font class="tn-in-text">Back</font></button></a>
-                    </td>
-                    <td>
-                        
-                        <form action="" method="post" class="header-search" style="margin-top: 0px; display: flex;">
 
-                            <input style="width: 500px;"  type="search" name="search" class="input-text header-searchbar" placeholder="Search Doctor name or Email" list="doctors">&nbsp;&nbsp;
-                            
-                            <?php
-                                echo '<datalist id="doctors">';
-                                $list11 = $database->query("select  docname,docemail from  doctor;");
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Our Doctors - MindCheck</title>
+    <link rel="stylesheet" href="../css/animations.css">
+    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="../css/admin.css">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <style>
+        .doctors-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .page-title {
+            color: #2c4964;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .doctors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 20px;
+        }
+        .doctor-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease;
+        }
+        .doctor-card:hover {
+            transform: translateY(-5px);
+        }
+        .doctor-header {
+            background: linear-gradient(45deg, #1977cc, #3291e6);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .doctor-header h3 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .doctor-body {
+            padding: 20px;
+        }
+        .doctor-info {
+            margin-bottom: 20px;
+        }
+        .doctor-info p {
+            margin: 10px 0;
+            color: #555;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .doctor-info i {
+            color: #1977cc;
+            font-size: 1.2em;
+        }
+        .doctor-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .action-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 500;
+            text-align: center;
+            text-decoration: none;
+            transition: background-color 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        .schedule-btn {
+            background: #1977cc;
+            color: white;
+        }
+        .schedule-btn:hover {
+            background: #1565c0;
+        }
+        .view-btn {
+            background: #e3f2fd;
+            color: #1977cc;
+        }
+        .view-btn:hover {
+            background: #bbdefb;
+        }
+        .no-doctors {
+            text-align: center;
+            padding: 50px 20px;
+            color: #666;
+        }
+        .no-doctors i {
+            font-size: 3em;
+            color: #1977cc;
+            margin-bottom: 20px;
+        }
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+        }
+        .close-modal {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        .doctor-profile {
+            text-align: center;
+        }
+        .doctor-profile h2 {
+            color: #2c4964;
+            margin-bottom: 20px;
+        }
+        .profile-info {
+            text-align: left;
+            margin-top: 20px;
+        }
+        .profile-info p {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .profile-info i {
+            color: #1977cc;
+            font-size: 1.2em;
+        }
+        @media (max-width: 768px) {
+            .doctors-grid {
+                grid-template-columns: 1fr;
+            }
+            .doctor-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <?php include("../header.php"); ?>
 
-                                for ($y=0;$y<$list11->num_rows;$y++){
-                                    $row00=$list11->fetch_assoc();
-                                    $d=$row00["docname"];
-                                    $c=$row00["docemail"];
-                                    echo "<option value='$d'><br/>";
-                                    echo "<option value='$c'><br/>";
-                                };
+    <div class="doctors-container">
+        <div class="page-title">
+            <h1>Our Mental Health Professionals</h1>
+            <p>Meet our team of experienced and dedicated mental health specialists</p>
+        </div>
 
-                            echo '</datalist>';?>
-                            
-                       
-                            <input type="Submit" value="Search" class="login-btn btn-primary btn" style="padding-left: 25px;padding-right: 25px;padding-top: 10px;padding-bottom: 10px;">
-                        
-                        </form>
-                        
-                    </td>
-                    <td width="15%">
-                        <p style="font-size: 14px;color: rgb(119, 119, 119);padding: 0;margin: 0;text-align: right;">
-                            Today's Date
-                        </p>
-                        <p class="heading-sub12" style="padding: 0;margin: 0; margin-left: 70px;">
-                            <?php 
-                        date_default_timezone_set('Asia/Karachi');
-
-                        $date = date('Y-m-d');
-                        echo $date;
-                        ?>
-                        </p>
-                    </td>
-                    <td width="10%">
-                        <button  class="btn-label"  style="display: flex;justify-content: center;align-items: center;"><img src="../img/calendar.svg" width="100%"></button>
-                    </td>
-
-
-                </tr>
-               
-                
-                <tr>
-                    <td colspan="4" style="padding-top:10px;">
-                        <p class="heading-main12" style="margin-left: 45px;font-size:18px;color:rgb(49, 49, 49)">All doctors (<?php echo $list11->num_rows; ?>)</p>
-                    </td>
-                    
-                </tr>
-                <?php
-                    if($_POST){
-                        $keyword=$_POST["search"];
-                        
-                        $sqlmain= "select * from doctor where docemail='$keyword' or docname='$keyword' or docname like '$keyword%' or docname like '%$keyword' or docname like '%$keyword%'";
-                    }else{
-                        $sqlmain= "select * from doctor order by docid desc";
-
-                    }
-
-
-
-                ?>
-                  
-                <tr>
-                   <td colspan="4">
-                       <center>
-                        <div class="abc scroll">
-                        <table width="93%" class="sub-table scrolldown" border="0">
-                        <thead>
-                        <tr>
-                                <th class="table-headin">
-                                    
-                                
-                                Doctor Name
-                                
-                                </th>
-                                <th class="table-headin">
-                                    Email
-                                </th>
-                                <th class="table-headin">
-                                    
-                                    Specialties
-                                    
-                                </th>
-                                <th class="table-headin">
-                                    
-                                    Events
-                                    
-                                </tr>
-                        </thead>
-                        <tbody>
-                        
-                            <?php
-
-                                
-                                $result= $database->query($sqlmain);
-
-                                if($result->num_rows==0){
-                                    echo '<tr>
-                                    <td colspan="4">
-                                    <br><br><br><br>
-                                    <center>
-                                    <img src="../img/notfound.svg" width="25%">
-                                    
-                                    <br>
-                                    <p class="heading-main12" style="margin-left: 45px;font-size:20px;color:rgb(49, 49, 49)">We  couldnt find anything related to your keywords !</p>
-                                    <a class="non-style-link" href="doctors.php"><button  class="login-btn btn-primary-soft btn"  style="display: flex;justify-content: center;align-items: center;margin-left:20px;">&nbsp; Show all Doctors &nbsp;</font></button>
-                                    </a>
-                                    </center>
-                                    <br><br><br><br>
-                                    </td>
-                                    </tr>';
-                                    
-                                }
-                                else{
-                                for ( $x=0; $x<$result->num_rows;$x++){
-                                    $row=$result->fetch_assoc();
-                                    $docid=$row["docid"];
-                                    $name=$row["docname"];
-                                    $email=$row["docemail"];
-                                    $spe=$row["specialties"];
-                                    $spcil_res= $database->query("select sname from specialties where id='$spe'");
-                                    $spcil_array= $spcil_res->fetch_assoc();
-                                    $spcil_name=$spcil_array["sname"];
-                                    echo '<tr>
-                                        <td> &nbsp;'.
-                                        substr($name,0,30)
-                                        .'</td>
-                                        <td>
-                                        '.substr($email,0,20).'
-                                        </td>
-                                        <td>
-                                            '.substr($spcil_name,0,20).'
-                                        </td>
-
-                                        <td>
-                                        <div style="display:flex;justify-content: center;">
-                                        
-                                        <a href="?action=view&id='.$docid.'" class="non-style-link"><button  class="btn-primary-soft btn button-icon btn-view"  style="padding-left: 40px;padding-top: 12px;padding-bottom: 12px;margin-top: 10px;"><font class="tn-in-text">View</font></button></a>
-                                       &nbsp;&nbsp;&nbsp;
-                                       <a href="?action=session&id='.$docid.'&name='.$name.'"  class="non-style-link"><button  class="btn-primary-soft btn button-icon menu-icon-session-active"  style="padding-left: 40px;padding-top: 12px;padding-bottom: 12px;margin-top: 10px;"><font class="tn-in-text">Sessions</font></button></a>
-                                        </div>
-                                        </td>
-                                    </tr>';
-                                    
-                                }
-                            }
-                                 
-                            ?>
- 
-                            </tbody>
-
-                        </table>
+        <?php if($result && $result->num_rows > 0): ?>
+            <div class="doctors-grid">
+                <?php while($doctor = $result->fetch_assoc()): ?>
+                    <div class="doctor-card">
+                        <div class="doctor-header">
+                            <h3>Dr. <?php echo htmlspecialchars($doctor['docname']); ?></h3>
                         </div>
-                        </center>
-                   </td> 
-                </tr>
-                       
-                        
-                        
-            </table>
+                        <div class="doctor-body">
+                            <div class="doctor-info">
+                                <p>
+                                    <i class='bx bx-briefcase-alt-2'></i>
+                                    <?php echo htmlspecialchars($doctor['specialties']); ?>
+                                </p>
+                                <p>
+                                    <i class='bx bx-time'></i>
+                                    <?php echo htmlspecialchars($doctor['docexp']); ?> years experience
+                                </p>
+                                <p>
+                                    <i class='bx bx-envelope'></i>
+                                    <?php echo htmlspecialchars($doctor['docemail']); ?>
+                                </p>
+                            </div>
+                            <div class="doctor-actions">
+                                <a href="schedule.php?doctor=<?php echo $doctor['docid']; ?>" class="action-btn schedule-btn">
+                                    <i class='bx bx-calendar-plus'></i> Schedule
+                                </a>
+                                <button onclick="viewDoctor(<?php echo $doctor['docid']; ?>)" class="action-btn view-btn">
+                                    <i class='bx bx-user'></i> Profile
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                <?php endwhile; ?>
+            </div>
+        <?php else: ?>
+            <div class="no-doctors">
+                <i class='bx bx-user-x'></i>
+                <h2>No Doctors Available</h2>
+                <p>We are currently updating our directory. Please check back later.</p>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <!-- Doctor Profile Modal -->
+    <div id="doctorModal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal()">&times;</span>
+            <div id="doctorProfile" class="doctor-profile">
+                <!-- Profile content will be loaded here -->
+            </div>
         </div>
     </div>
+
+    <script>
+    function viewDoctor(docId) {
+        const modal = document.getElementById('doctorModal');
+        const profileDiv = document.getElementById('doctorProfile');
+        
+        // Fetch doctor details using AJAX
+        fetch(`get_doctor.php?id=${docId}`)
+            .then(response => response.json())
+            .then(doctor => {
+                profileDiv.innerHTML = `
+                    <h2>Dr. ${doctor.docname}</h2>
+                    <div class="profile-info">
+                        <p><i class='bx bx-briefcase-alt-2'></i> <strong>Specialization:</strong> ${doctor.specialties}</p>
+                        <p><i class='bx bx-time'></i> <strong>Experience:</strong> ${doctor.docexp} years</p>
+                        <p><i class='bx bx-envelope'></i> <strong>Email:</strong> ${doctor.docemail}</p>
+                        <p><i class='bx bx-phone'></i> <strong>Phone:</strong> ${doctor.doctel}</p>
+                    </div>
+                `;
+                modal.classList.add('show');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error loading doctor profile');
+            });
+    }
+
+    function closeModal() {
+        document.getElementById('doctorModal').classList.remove('show');
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        const modal = document.getElementById('doctorModal');
+        if (event.target == modal) {
+            modal.classList.remove('show');
+        }
+    }
+    </script>
+
     <?php 
     if($_GET){
         
@@ -317,7 +427,6 @@
                         </table>
                         </div>
                     </center>
-                    <br><br>
             </div>
             </div>
             ';
@@ -535,5 +644,6 @@
 ?>
 </div>
 
-</section><!-- breadcrumbs -->
-<?php include("patient_footer.php"); ?>
+</body>
+</html>
+<?php include($base_url."footer.php"); ?>

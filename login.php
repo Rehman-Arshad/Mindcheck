@@ -41,12 +41,19 @@
             if ($utype=='p'){
                 $checker = $database->query("select * from patient where pemail='$email' and ppassword='$password'");
                 if ($checker->num_rows==1){
+                    $row = $checker->fetch_assoc();
 
                     //   patient dashboard
                     $_SESSION['user']=$email;
                     $_SESSION['usertype']='p';
+                    $_SESSION["username"]=$row['pname'];
                     
-                    header('location: patient/dashboard.php');
+                    // Check if there's a redirect parameter
+                    if(isset($_GET['redirect']) && $_GET['redirect'] === 'assessment') {
+                        header("location: patient/dashboard.php?redirect=assessment");
+                    } else {
+                        header("location: patient/dashboard.php");
+                    }
 
                 }else{
                     $error='<label for="promter" class="form-label" style="color:rgb(255, 62, 62);text-align:center;">Wrong credentials: Invalid email or password</label>';
