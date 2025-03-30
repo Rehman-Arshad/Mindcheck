@@ -1,553 +1,392 @@
+<?php
+session_start();
+if (!isset($_SESSION["user"]) || $_SESSION["usertype"] != 'd') {
+    header("location: ../login.php");
+    exit();
+}
+
+include("../connection.php");
+
+// Get doctor ID
+$email = $_SESSION["user"];
+$result = $database->query("SELECT docid FROM doctor WHERE docemail='$email'");
+if ($result && $result->num_rows > 0) {
+    $row = $result->fetch_assoc();
+    $docid = $row['docid'];
+} else {
+    die("Error: Doctor not found");
+}
+
+// Get filter parameters
+$status_filter = isset($_GET['status']) ? $_GET['status'] : '';
+$date_filter = isset($_GET['date']) ? $_GET['date'] : 'upcoming';
+
+// Base query
+$query = "
+    SELECT 
+        a.appoid,
+        a.status,
+        s.scheduledate,
+        s.scheduletime,
+        s.title,
+        p.pname,
+        p.pemail,
+        p.pid
+    FROM appointment a
+    JOIN schedule s ON a.scheduleid = s.scheduleid
+    JOIN patient p ON a.pid = p.pid
+    WHERE s.docid = ?
+";
+
+$param_types = "i";
+$params = [$docid];
+
+// Add filters
+if ($status_filter) {
+    $query .= " AND a.status = ?";
+    $params[] = $status_filter;
+    $param_types .= "s";
+}
+
+if ($date_filter === 'today') {
+    $query .= " AND s.scheduledate = CURDATE()";
+} elseif ($date_filter === 'upcoming') {
+    $query .= " AND s.scheduledate >= CURDATE()";
+} elseif ($date_filter === 'past') {
+    $query .= " AND s.scheduledate < CURDATE()";
+} elseif ($date_filter) {
+    $query .= " AND s.scheduledate = ?";
+    $params[] = $date_filter;
+    $param_types .= "s";
+}
+
+$query .= " ORDER BY s.scheduledate ASC, s.scheduletime ASC";
+
+$stmt = $database->prepare($query);
+if (!$stmt) {
+    die("Error preparing query: " . $database->error);
+}
+
+if (!empty($params)) {
+    $stmt->bind_param($param_types, ...$params);
+}
+$stmt->execute();
+$appointments = $stmt->get_result();
+?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../css/animations.css">  
-    <link rel="stylesheet" href="../css/main.css">  
-    <link rel="stylesheet" href="../css/admin.css">
-        
-    <title>Appointments</title>
+    <title>Appointments - MindCheck</title>
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link rel="stylesheet" href="../css/main.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .popup{
-            animation: transitionIn-Y-bottom 0.5s;
+        :root {
+            --primary: #1977cc;
+            --secondary: #2c4964;
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --light: #f8f9fa;
+            --dark: #343a40;
         }
-        .sub-table{
-            animation: transitionIn-Y-bottom 0.5s;
+
+        body { 
+            background-color: var(--light);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
-</style>
+
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 1.5rem;
+        }
+
+        .card-header {
+            background: white;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 1.5rem;
+            border-radius: 15px 15px 0 0 !important;
+        }
+
+        .card-header h2 {
+            margin: 0;
+            color: var(--secondary);
+            font-size: 1.5rem;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        .filter-options {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .appointment-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        
+        .appointment-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden;
+            transition: transform 0.3s ease;
+        }
+        
+        .appointment-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .appointment-header {
+            padding: 1.25rem;
+            background: linear-gradient(135deg, var(--primary), #3291e6);
+            color: white;
+        }
+        
+        .appointment-header h3 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 500;
+        }
+        
+        .appointment-header p {
+            margin: 0.5rem 0 0;
+            opacity: 0.9;
+            font-size: 0.9rem;
+        }
+        
+        .appointment-body {
+            padding: 1.25rem;
+        }
+        
+        .appointment-info {
+            margin-bottom: 1.25rem;
+        }
+        
+        .appointment-info p {
+            margin: 0.5rem 0;
+            color: var(--secondary);
+            font-size: 0.9rem;
+        }
+        
+        .appointment-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .btn-action {
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1565b0;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--light);
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .status-pending {
+            background: rgba(255,193,7,0.1);
+            color: var(--warning);
+        }
+
+        .status-confirmed {
+            background: rgba(40,167,69,0.1);
+            color: var(--success);
+        }
+
+        .status-cancelled {
+            background: rgba(220,53,69,0.1);
+            color: var(--danger);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1.5rem;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            grid-column: 1 / -1;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            color: #dee2e6;
+            margin-bottom: 1rem;
+        }
+        
+        .empty-state h3 {
+            color: var(--secondary);
+            margin-bottom: 0.5rem;
+            font-size: 1.25rem;
+        }
+        
+        .empty-state p {
+            color: #6c757d;
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .filter-options {
+                flex-direction: column;
+            }
+            .appointment-grid {
+                grid-template-columns: 1fr;
+            }
+            .appointment-actions {
+                flex-direction: column;
+            }
+            .btn-action {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
 </head>
 <body>
-    <?php
+    <?php include("header.php"); ?>
 
-    session_start();
+    <div class="container-fluid py-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2>Appointments</h2>
+                <a href="schedule.php" class="btn-action btn-primary">
+                    <i class='bx bx-plus'></i> New Appointment
+                </a>
+            </div>
+            <div class="card-body">
+                <div class="filter-options">
+                    <a href="?date=today" class="btn-action <?php echo $date_filter === 'today' ? 'btn-primary' : 'btn-secondary'; ?>">
+                        <i class='bx bx-calendar'></i> Today
+                    </a>
+                    <a href="?date=upcoming" class="btn-action <?php echo $date_filter === 'upcoming' ? 'btn-primary' : 'btn-secondary'; ?>">
+                        <i class='bx bx-calendar-check'></i> Upcoming
+                    </a>
+                    <a href="?date=past" class="btn-action <?php echo $date_filter === 'past' ? 'btn-primary' : 'btn-secondary'; ?>">
+                        <i class='bx bx-calendar-x'></i> Past
+                    </a>
+                </div>
 
-    if(isset($_SESSION["user"])){
-        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='d'){
-            header("location: ../login.php");
-        }else{
-            $useremail=$_SESSION["user"];
-        }
-
-    }else{
-        header("location: ../login.php");
-    }
-    
-       //import database
-       include("../connection.php");
-       $userrow = $database->query("select * from doctor where docemail='$useremail'");
-       $userfetch=$userrow->fetch_assoc();
-       $userid= $userfetch["docid"];
-       $username=$userfetch["docname"];
-    //echo $userid;
-    ?>
-    <div class="container">
-        
-        <?php include("../header.php"); ?>
-
-        <div class="dash-body">
-            <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;margin-top:25px; ">
-                <tr >
-                    <td width="13%" >
-                    <a href="appointment.php" ><button  class="login-btn btn-primary-soft btn btn-icon-back"  style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px"><font class="tn-in-text">Back</font></button></a>
-                    </td>
-                    <td>
-                        <p style="font-size: 23px;padding-left:12px;font-weight: 600;">Appointment Manager</p>
-                                           
-                    </td>
-                    <td width="15%">
-                        <p style="font-size: 14px;color: rgb(119, 119, 119);padding: 0;margin: 0;text-align: right;">
-                            Today's Date
-                        </p>
-                        <p class="heading-sub12" style="padding: 0;margin: 0;">
-                            <?php 
-
-                        date_default_timezone_set('Asia/Karachi');
-
-                        $today = date('Y-m-d');
-                        echo $today;
-
-                        $list110 = $database->query("select * from schedule inner join appointment on schedule.scheduleid=appointment.scheduleid inner join patient on patient.pid=appointment.pid inner join doctor on schedule.docid=doctor.docid  where  doctor.docid=$userid ");
-
-                        ?>
-                        </p>
-                    </td>
-                    <td width="10%">
-                        <button  class="btn-label"  style="display: flex;justify-content: center;align-items: center;"><img src="../img/calendar.svg" width="100%"></button>
-                    </td>
-
-
-                </tr>
-               
-                <!-- <tr>
-                    <td colspan="4" >
-                        <div style="display: flex;margin-top: 40px;">
-                        <div class="heading-main12" style="margin-left: 45px;font-size:20px;color:rgb(49, 49, 49);margin-top: 5px;">Schedule a Session</div>
-                        <a href="?action=add-session&id=none&error=0" class="non-style-link"><button  class="login-btn btn-primary btn button-icon"  style="margin-left:25px;background-image: url('../img/icons/add.svg');">Add a Session</font></button>
-                        </a>
+                <div class="appointment-grid">
+                    <?php if ($appointments && $appointments->num_rows > 0): ?>
+                        <?php while($row = $appointments->fetch_assoc()): ?>
+                            <div class="appointment-card">
+                                <div class="appointment-header">
+                                    <h3><?php echo date('F j, Y', strtotime($row['scheduledate'])); ?></h3>
+                                    <p><?php echo date('g:i A', strtotime($row['scheduletime'])); ?> - <?php echo $row['title']; ?></p>
+                                </div>
+                                <div class="appointment-body">
+                                    <div class="appointment-info">
+                                        <p><strong>Patient:</strong> <?php echo htmlspecialchars($row['pname']); ?></p>
+                                        <p><strong>Email:</strong> <?php echo htmlspecialchars($row['pemail']); ?></p>
+                                        <p>
+                                            <strong>Status:</strong> 
+                                            <span class="status-badge status-<?php echo strtolower($row['status']); ?>">
+                                                <i class='bx bx-<?php 
+                                                    echo $row['status'] === 'confirmed' ? 'check-circle' : 
+                                                        ($row['status'] === 'cancelled' ? 'x-circle' : 'time-five');
+                                                ?>'></i>
+                                                <?php echo ucfirst($row['status']); ?>
+                                            </span>
+                                        </p>
+                                    </div>
+                                    <div class="appointment-actions">
+                                        <?php if ($row['status'] === 'pending'): ?>
+                                            <button onclick="updateStatus(<?php echo $row['appoid']; ?>, 'confirmed')" class="btn-action btn-primary">
+                                                <i class='bx bx-check'></i> Confirm
+                                            </button>
+                                            <button onclick="updateStatus(<?php echo $row['appoid']; ?>, 'cancelled')" class="btn-action btn-secondary">
+                                                <i class='bx bx-x'></i> Cancel
+                                            </button>
+                                        <?php endif; ?>
+                                        <a href="patient-details.php?id=<?php echo $row['pid']; ?>" class="btn-action btn-secondary">
+                                            <i class='bx bx-user'></i> View Patient
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class='bx bx-calendar-x'></i>
+                            <h3>No appointments found</h3>
+                            <p>There are no appointments matching your filters.</p>
                         </div>
-                    </td>
-                </tr> -->
-                <tr>
-                    <td colspan="4" style="padding-top:10px;width: 100%;" >
-                    
-                        <p class="heading-main12" style="margin-left: 45px;font-size:18px;color:rgb(49, 49, 49)">My Appointments (<?php echo $list110->num_rows; ?>)</p>
-                    </td>
-                    
-                </tr>
-                <tr>
-                    <td colspan="4" style="padding-top:0px;width: 100%;" >
-                        <center>
-                        <table class="filter-container" border="0" >
-                        <tr>
-                           <td width="10%">
-
-                           </td> 
-                        <td width="5%" style="text-align: center;">
-                        Date:
-                        </td>
-                        <td width="30%">
-                        <form action="" method="post">
-                            
-                            <input type="date" name="sheduledate" id="date" class="input-text filter-container-items" style="margin: 0;width: 95%;">
-
-                        </td>
-                        
-                    <td width="12%">
-                        <input type="submit"  name="filter" value=" Filter" class=" btn-primary-soft btn button-icon btn-filter"  style="padding: 15px; margin :0;width:100%">
-                        </form>
-                    </td>
-
-                    </tr>
-                            </table>
-
-                        </center>
-                    </td>
-                    
-                </tr>
-                
-                <?php
-
-
-                    $sqlmain= "select appointment.appoid,schedule.scheduleid,schedule.title,doctor.docname,patient.pname,schedule.scheduledate,schedule.scheduletime,appointment.apponum,appointment.appodate from schedule inner join appointment on schedule.scheduleid=appointment.scheduleid inner join patient on patient.pid=appointment.pid inner join doctor on schedule.docid=doctor.docid  where  doctor.docid=$userid ";
-
-                    if($_POST){
-                        //print_r($_POST);
-                        
-
-
-                        
-                        if(!empty($_POST["sheduledate"])){
-                            $sheduledate=$_POST["sheduledate"];
-                            $sqlmain.=" and schedule.scheduledate='$sheduledate' ";
-                        };
-
-                        
-
-                        //echo $sqlmain;
-
-                    }
-
-
-                ?>
-                  
-                <tr>
-                   <td colspan="4">
-                       <center>
-                        <div class="abc scroll">
-                        <table width="93%" class="sub-table scrolldown" border="0">
-                        <thead>
-                        <tr>
-                                <th class="table-headin">
-                                    Patient name
-                                </th>
-                                <th class="table-headin">
-                                    
-                                    Appointment number
-                                    
-                                </th>
-                               
-                                <th class="table-headin">
-                                    
-                                
-                                    Session Title
-                                    
-                                    </th>
-                                
-                                <th class="table-headin" >
-                                    
-                                    Session Date & Time
-                                    
-                                </th>
-                                
-                                <th class="table-headin">
-                                    
-                                    Appointment Date
-                                    
-                                </th>
-                                
-                                <th class="table-headin">
-                                    
-                                    Events
-                                    
-                                </tr>
-                        </thead>
-                        <tbody>
-                        
-                            <?php
-
-                                
-                                $result= $database->query($sqlmain);
-
-                                if($result->num_rows==0){
-                                    echo '<tr>
-                                    <td colspan="7">
-                                    <br><br><br><br>
-                                    <center>
-                                    <img src="../img/notfound.svg" width="25%">
-                                    
-                                    <br>
-                                    <p class="heading-main12" style="margin-left: 45px;font-size:20px;color:rgb(49, 49, 49)">We  couldnt find anything related to your keywords !</p>
-                                    <a class="non-style-link" href="appointment.php"><button  class="login-btn btn-primary-soft btn"  style="display: flex;justify-content: center;align-items: center;margin-left:20px;">&nbsp; Show all Appointments &nbsp;</font></button>
-                                    </a>
-                                    </center>
-                                    <br><br><br><br>
-                                    </td>
-                                    </tr>';
-                                    
-                                }
-                                else{
-                                for ( $x=0; $x<$result->num_rows;$x++){
-                                    $row=$result->fetch_assoc();
-                                    $appoid=$row["appoid"];
-                                    $scheduleid=$row["scheduleid"];
-                                    $title=$row["title"];
-                                    $docname=$row["docname"];
-                                    $scheduledate=$row["scheduledate"];
-                                    $scheduletime=$row["scheduletime"];
-                                    $pname=$row["pname"];
-                                    $apponum=$row["apponum"];
-                                    $appodate=$row["appodate"];
-                                    echo '<tr >
-                                        <td style="font-weight:600;"> &nbsp;'.
-                                        
-                                        substr($pname,0,25)
-                                        .'</td >
-                                        <td style="text-align:center;font-size:23px;font-weight:500; color: var(--btnnicetext);">
-                                        '.$apponum.'
-                                        
-                                        </td>
-                                        <td>
-                                        '.substr($title,0,15).'
-                                        </td>
-                                        <td style="text-align:center;;">
-                                            '.substr($scheduledate,0,10).' @'.substr($scheduletime,0,5).'
-                                        </td>
-                                        
-                                        <td style="text-align:center;">
-                                            '.$appodate.'
-                                        </td>
-
-                                        <td>
-                                        <div style="display:flex;justify-content: center;">
-                                        
-                                        <!--<a href="?action=view&id='.$appoid.'" class="non-style-link"><button  class="btn-primary-soft btn button-icon btn-view"  style="padding-left: 40px;padding-top: 12px;padding-bottom: 12px;margin-top: 10px;"><font class="tn-in-text">View</font></button></a>
-                                       &nbsp;&nbsp;&nbsp;-->
-                                       <a href="?action=drop&id='.$appoid.'&name='.$pname.'&session='.$title.'&apponum='.$apponum.'" class="non-style-link"><button  class="btn-primary-soft btn button-icon btn-delete"  style="padding-left: 40px;padding-top: 12px;padding-bottom: 12px;margin-top: 10px;"><font class="tn-in-text">Cancel</font></button></a>
-                                       &nbsp;&nbsp;&nbsp;</div>
-                                        </td>
-                                    </tr>';
-                                    
-                                }
-                            }
-                                 
-                            ?>
- 
-                            </tbody>
-
-                        </table>
-                        </div>
-                        </center>
-                   </td> 
-                </tr>
-                       
-                        
-                        
-            </table>
+                    <?php endif; ?>
+                </div>
+            </div>
         </div>
     </div>
-    <?php
-    
-    if($_GET){
-        $id=$_GET["id"];
-        $action=$_GET["action"];
-        if($action=='add-session'){
 
-            echo '
-            <div id="popup1" class="overlay">
-                    <div class="popup">
-                    <center>
-                    
-                    
-                        <a class="close" href="schedule.php">&times;</a> 
-                        <div style="display: flex;justify-content: center;">
-                        <div class="abc">
-                        <table width="80%" class="sub-table scrolldown add-doc-form-container" border="0">
-                        <tr>
-                                <td class="label-td" colspan="2">'.
-                                   ""
-                                
-                                .'</td>
-                            </tr>
-
-                            <tr>
-                                <td>
-                                    <p style="padding: 0;margin: 0;text-align: left;font-size: 25px;font-weight: 500;">Add New Session.</p><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                <form action="add-session.php" method="POST" class="add-new-form">
-                                    <label for="title" class="form-label">Session Title : </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <input type="text" name="title" class="input-text" placeholder="Name of this Session" required><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                
-                                <td class="label-td" colspan="2">
-                                    <label for="docid" class="form-label">Select Doctor: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <select name="docid" id="" class="box" >
-                                    <option value="" disabled selected hidden>Choose Doctor Name from the list</option><br/>';
-                                        
-        
-                                        $list11 = $database->query("select  * from  doctor;");
-        
-                                        for ($y=0;$y<$list11->num_rows;$y++){
-                                            $row00=$list11->fetch_assoc();
-                                            $sn=$row00["docname"];
-                                            $id00=$row00["docid"];
-                                            echo "<option value=".$id00.">$sn</option><br/>";
-                                        };
-        
-        
-        
-                                        
-                        echo     '       </select><br><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="nop" class="form-label">Number of patient/Appointment Numbers : </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <input type="number" name="nop" class="input-text" min="0"  placeholder="The final appointment number for this session depends on this number" required><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="date" class="form-label">Session Date: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <input type="date" name="date" class="input-text" min="'.date('Y-m-d').'" required><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="time" class="form-label">Schedule Time: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <input type="time" name="time" class="input-text" placeholder="Time" required><br>
-                                </td>
-                            </tr>
-                           
-                            <tr>
-                                <td colspan="2">
-                                    <input type="reset" value="Reset" class="login-btn btn-primary-soft btn" >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                                
-                                    <input type="submit" value="Place this Session" class="login-btn btn-primary btn" name="shedulesubmit">
-                                </td>
-                
-                            </tr>
-                           
-                            </form>
-                            </tr>
-                        </table>
-                        </div>
-                        </div>
-                    </center>
-                    <br><br>
-            </div>
-            </div>
-            ';
-        }elseif($action=='session-added'){
-            $titleget=$_GET["title"];
-            echo '
-            <div id="popup1" class="overlay">
-                    <div class="popup">
-                    <center>
-                    <br><br>
-                        <h2>Session Placed.</h2>
-                        <a class="close" href="schedule.php">&times;</a>
-                        <div class="content">
-                        '.substr($titleget,0,40).' was scheduled.<br><br>
-                            
-                        </div>
-                        <div style="display: flex;justify-content: center;">
-                        
-                        <a href="schedule.php" class="non-style-link"><button  class="btn-primary btn"  style="display: flex;justify-content: center;align-items: center;margin:10px;padding:10px;"><font class="tn-in-text">&nbsp;&nbsp;OK&nbsp;&nbsp;</font></button></a>
-                        <br><br><br><br>
-                        </div>
-                    </center>
-            </div>
-            </div>
-            ';
-        }elseif($action=='drop'){
-            $nameget=$_GET["name"];
-            $session=$_GET["session"];
-            $apponum=$_GET["apponum"];
-            echo '
-            <div id="popup1" class="overlay">
-                    <div class="popup">
-                    <center>
-                        <h2>Are you sure?</h2>
-                        <a class="close" href="appointment.php">&times;</a>
-                        <div class="content">
-                            You want to delete this record<br><br>
-                            Patient Name: &nbsp;<b>'.substr($nameget,0,40).'</b><br>
-                            Appointment number &nbsp; : <b>'.substr($apponum,0,40).'</b><br><br>
-                            
-                        </div>
-                        <div style="display: flex;justify-content: center;">
-                        <a href="delete-appointment.php?id='.$id.'" class="non-style-link"><button  class="btn-primary btn"  style="display: flex;justify-content: center;align-items: center;margin:10px;padding:10px;"<font class="tn-in-text">&nbsp;Yes&nbsp;</font></button></a>&nbsp;&nbsp;&nbsp;
-                        <a href="appointment.php" class="non-style-link"><button  class="btn-primary btn"  style="display: flex;justify-content: center;align-items: center;margin:10px;padding:10px;"><font class="tn-in-text">&nbsp;&nbsp;No&nbsp;&nbsp;</font></button></a>
-
-                        </div>
-                    </center>
-            </div>
-            </div>
-            '; 
-        }elseif($action=='view'){
-            $sqlmain= "select * from doctor where docid='$id'";
-            $result= $database->query($sqlmain);
-            $row=$result->fetch_assoc();
-            $name=$row["docname"];
-            $email=$row["docemail"];
-            $spe=$row["specialties"];
-            
-            $spcil_res= $database->query("select sname from specialties where id='$spe'");
-            $spcil_array= $spcil_res->fetch_assoc();
-            $spcil_name=$spcil_array["sname"];
-            $nic=$row['docnic'];
-            $tele=$row['doctel'];
-            echo '
-            <div id="popup1" class="overlay">
-                    <div class="popup">
-                    <center>
-                        <h2></h2>
-                        <a class="close" href="doctors.php">&times;</a>
-                        <div class="content">
-                            MindCheck<br>
-                            
-                        </div>
-                        <div style="display: flex;justify-content: center;">
-                        <table width="80%" class="sub-table scrolldown add-doc-form-container" border="0">
-                        
-                            <tr>
-                                <td>
-                                    <p style="padding: 0;margin: 0;text-align: left;font-size: 25px;font-weight: 500;">View Details.</p><br><br>
-                                </td>
-                            </tr>
-                            
-                            <tr>
-                                
-                                <td class="label-td" colspan="2">
-                                    <label for="name" class="form-label">Name: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    '.$name.'<br><br>
-                                </td>
-                                
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="Email" class="form-label">Email: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                '.$email.'<br><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="nic" class="form-label">NIC: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                '.$nic.'<br><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="Tele" class="form-label">Telephone: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                '.$tele.'<br><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="spec" class="form-label">Specialties: </label>
-                                    
-                                </td>
-                            </tr>
-                            <tr>
-                            <td class="label-td" colspan="2">
-                            '.$spcil_name.'<br><br>
-                            </td>
-                            </tr>
-                            <tr>
-                                <td colspan="2">
-                                    <a href="doctors.php"><input type="button" value="OK" class="login-btn btn-primary-soft btn" ></a>
-                                
-                                    
-                                </td>
-                
-                            </tr>
-                           
-
-                        </table>
-                        </div>
-                    </center>
-                    <br><br>
-            </div>
-            </div>
-            ';  
-    }
-}
-
-    ?>
-    </div>
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function updateStatus(appointmentId, status) {
+            if (confirm('Are you sure you want to ' + status + ' this appointment?')) {
+                fetch('update-appointment.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `id=${appointmentId}&status=${status}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        alert(data.message || 'Failed to update appointment status');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while updating the appointment');
+                });
+            }
+        }
+    </script>
 </body>
 </html>

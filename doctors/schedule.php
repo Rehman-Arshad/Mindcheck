@@ -1,459 +1,324 @@
+<?php
+session_start();
+if (!isset($_SESSION["user"]) || $_SESSION["usertype"] != 'd') {
+    header("location: ../login.php");
+    exit();
+}
+
+include("../connection.php");
+include("includes/functions.php");
+
+// Get doctor info
+$useremail = $_SESSION["user"];
+$userrow = $database->query("SELECT * FROM doctor WHERE docemail='$useremail'");
+$userfetch = $userrow->fetch_assoc();
+$userid = $userfetch["docid"];
+$username = $userfetch["docname"];
+
+// Get schedule data
+$query = "
+    SELECT 
+        s.*,
+        COUNT(a.appoid) as booked_appointments,
+        GROUP_CONCAT(p.pname SEPARATOR ', ') as patient_names
+    FROM schedule s
+    LEFT JOIN appointment a ON s.scheduleid = a.scheduleid
+    LEFT JOIN patient p ON a.pid = p.pid
+    WHERE s.docid = ?
+    GROUP BY s.scheduleid
+    ORDER BY s.scheduledate ASC, s.scheduletime ASC
+";
+
+$stmt = $database->prepare($query);
+$stmt->bind_param("i", $userid);
+$stmt->execute();
+$schedules = $stmt->get_result();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../css/animations.css">  
-    <link rel="stylesheet" href="../css/main.css">  
-    <link rel="stylesheet" href="../css/admin.css">
-        
-    <title>Schedule</title>
+    <title>Schedule - MindCheck</title>
+    <link rel="stylesheet" href="../css/animations.css">
+    <link rel="stylesheet" href="../css/main.css">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .popup{
-            animation: transitionIn-Y-bottom 0.5s;
+        :root {
+            --primary: #1977cc;
+            --secondary: #2c4964;
+            --success: #28a745;
+            --danger: #dc3545;
+            --warning: #ffc107;
+            --info: #17a2b8;
+            --light: #f8f9fa;
+            --dark: #343a40;
         }
-        .sub-table{
-            animation: transitionIn-Y-bottom 0.5s;
+        .main-content {
+            margin-top: 60px;
+            padding: 2rem;
         }
-</style>
+        .page-header {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 2rem;
+        }
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+        }
+        .schedule-card {
+            background: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease;
+        }
+        .schedule-card:hover {
+            transform: translateY(-5px);
+        }
+        .schedule-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #eee;
+        }
+        .schedule-date {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--primary);
+            font-weight: 600;
+        }
+        .schedule-time {
+            background: var(--light);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: var(--secondary);
+        }
+        .schedule-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 1rem 0;
+            color: var(--secondary);
+        }
+        .schedule-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 0.75rem;
+            background: var(--light);
+            border-radius: 8px;
+        }
+        .stat-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin: 0;
+        }
+        .stat-label {
+            font-size: 0.75rem;
+            color: #666;
+            margin: 0;
+        }
+        .patient-list {
+            margin: 1rem 0;
+            padding: 1rem;
+            background: var(--light);
+            border-radius: 8px;
+        }
+        .patient-list h4 {
+            font-size: 0.875rem;
+            color: #666;
+            margin-bottom: 0.5rem;
+        }
+        .patient-list p {
+            margin: 0;
+            font-size: 0.9rem;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        .btn-action {
+            flex: 1;
+            padding: 0.5rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+        }
+        .btn-primary-soft {
+            background: rgba(25,119,204,0.1);
+            color: var(--primary);
+        }
+        .btn-primary-soft:hover {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-danger-soft {
+            background: rgba(220,53,69,0.1);
+            color: var(--danger);
+        }
+        .btn-danger-soft:hover {
+            background: var(--danger);
+            color: white;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .empty-state i {
+            font-size: 4rem;
+            color: #dee2e6;
+            margin-bottom: 1rem;
+        }
+        .empty-state p {
+            color: #6c757d;
+            margin: 0;
+        }
+        .add-schedule-form {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 2rem;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+        @media (max-width: 768px) {
+            .schedule-grid {
+                grid-template-columns: 1fr;
+            }
+            .action-buttons {
+                flex-direction: column;
+            }
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
-    <?php
+    <?php include("header.php"); ?>
 
-    session_start();
+        <div class="container">
+            <div class="page-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h1 class="h3 mb-0">Schedule Management</h1>
+                        <p class="text-muted mb-0">Manage your session schedules and appointments</p>
+                    </div>
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addScheduleModal">
+                        <i class='bx bx-plus'></i> Add New Session
+                    </button>
+                </div>
+            </div>
 
-    if(isset($_SESSION["user"])){
-        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='d'){
-            header("location: ../login.php");
-        }else{
-            $useremail=$_SESSION["user"];
-        }
+            <div class="add-schedule-form">
+                <h4 class="mb-3">Quick Add Session</h4>
+                <form action="add-schedule.php" method="POST" class="form-grid">
+                    <div class="mb-3">
+                        <label class="form-label">Session Title</label>
+                        <input type="text" name="title" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Date</label>
+                        <input type="date" name="date" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Time</label>
+                        <input type="time" name="time" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Duration (minutes)</label>
+                        <input type="number" name="duration" class="form-control" value="30" required>
+                    </div>
+                    <div class="mb-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class='bx bx-calendar-plus'></i> Create Session
+                        </button>
+                    </div>
+                </form>
+            </div>
 
-    }else{
-        header("location: ../login.php");
-    }
-    
-    //import database
-    include("../connection.php");
-    $userrow = $database->query("select * from doctor where docemail='$useremail'");
-    $userfetch=$userrow->fetch_assoc();
-    $userid= $userfetch["docid"];
-    $username=$userfetch["docname"];
- //echo $userid;
- ?>
- <div class="container">
-    
-     <?php include("../header.php"); ?>
+            <?php if ($schedules && $schedules->num_rows > 0): ?>
+                <div class="schedule-grid">
+                    <?php while($row = $schedules->fetch_assoc()): ?>
+                        <div class="schedule-card">
+                            <div class="schedule-header">
+                                <div class="schedule-date">
+                                    <i class='bx bx-calendar'></i>
+                                    <?php echo date('d M Y', strtotime($row['scheduledate'])); ?>
+                                </div>
+                                <div class="schedule-time">
+                                    <i class='bx bx-time'></i>
+                                    <?php echo date('h:i A', strtotime($row['scheduletime'])); ?>
+                                </div>
+                            </div>
 
-        <div class="dash-body">
-            <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;margin-top:25px; ">
-                <tr >
-                    <td width="13%" >
-                    <a href="schedule.php" ><button  class="login-btn btn-primary-soft btn btn-icon-back"  style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px"><font class="tn-in-text">Back</font></button></a>
-                    </td>
-                    <td>
-                        <p style="font-size: 23px;padding-left:12px;font-weight: 600;">My Sessions</p>
-                                           
-                    </td>
-                    <td width="15%">
-                        <p style="font-size: 14px;color: rgb(119, 119, 119);padding: 0;margin: 0;text-align: right;">
-                            Today's Date
-                        </p>
-                        <p class="heading-sub12" style="padding: 0;margin: 0;">
-                            <?php 
+                            <h3 class="schedule-title"><?php echo htmlspecialchars($row['title']); ?></h3>
 
-                        date_default_timezone_set('Asia/Karachi');
+                            <div class="schedule-stats">
+                                <div class="stat-item">
+                                    <p class="stat-value"><?php echo (int)$row['booked_appointments']; ?></p>
+                                    <p class="stat-label">Booked</p>
+                                </div>
+                                <div class="stat-item">
+                                    <p class="stat-value"><?php echo (int)$row['nop'] - (int)$row['booked_appointments']; ?></p>
+                                    <p class="stat-label">Available</p>
+                                </div>
+                            </div>
 
-                        $today = date('Y-m-d');
-                        echo $today;
+                            <?php if ($row['patient_names']): ?>
+                                <div class="patient-list">
+                                    <h4>Booked Patients</h4>
+                                    <p><?php echo htmlspecialchars($row['patient_names']); ?></p>
+                                </div>
+                            <?php endif; ?>
 
-                        $list110 = $database->query("select  * from  schedule where docid=$userid;");
-
-                        ?>
-                        </p>
-                    </td>
-                    <td width="10%">
-                        <button  class="btn-label"  style="display: flex;justify-content: center;align-items: center;"><img src="../img/calendar.svg" width="100%"></button>
-                    </td>
-
-
-                </tr>
-               
-                
-                <tr>
-                    <td colspan="4" style="padding-top:10px;width: 100%;" >
-                    
-                        <p class="heading-main12" style="margin-left: 45px;font-size:18px;color:rgb(49, 49, 49)">My Sessions (<?php echo $list110->num_rows; ?>) </p>
-                    </td>
-                    
-                </tr>
-                
-                <tr>
-                    <td colspan="4" style="padding-top:0px;width: 100%;" >
-                        <center>
-                        <table class="filter-container" border="0" >
-                        <tr>
-                           <td width="10%">
-
-                           </td> 
-                        <td width="5%" style="text-align: center;">
-                        Date:
-                        </td>
-                        <td width="30%">
-                        <form action="" method="post">
-                            
-                            <input type="date" name="sheduledate" id="date" class="input-text filter-container-items" style="margin: 0;width: 95%;">
-
-                        </td>
-                        
-                    <td width="12%">
-                        <input type="submit"  name="filter" value=" Filter" class=" btn-primary-soft btn button-icon btn-filter"  style="padding: 15px; margin :0;width:100%">
-                        </form>
-                    </td>
-
-                    </tr>
-                            </table>
-
-                        </center>
-                    </td>
-                    
-                </tr>
-                
-                <?php
-
-                $sqlmain= "select schedule.scheduleid,schedule.title,doctor.docname,schedule.scheduledate,schedule.scheduletime,schedule.nop from schedule inner join doctor on schedule.docid=doctor.docid where doctor.docid=$userid ";
-                    if($_POST){
-                        //print_r($_POST);
-                        $sqlpt1="";
-                        if(!empty($_POST["sheduledate"])){
-                            $sheduledate=$_POST["sheduledate"];
-                            $sqlmain.=" and schedule.scheduledate='$sheduledate' ";
-                        }
-
-                    }
-
-                ?>
-                  
-                <tr>
-                   <td colspan="4">
-                       <center>
-                        <div class="abc scroll">
-                        <table width="93%" class="sub-table scrolldown" border="0">
-                        <thead>
-                        <tr>
-                                <th class="table-headin">
-                                    
-                                
-                                Session Title
-                                
-                                </th>
-                                
-                                
-                                <th class="table-headin">
-                                    
-                                    Sheduled Date & Time
-                                    
-                                </th>
-                                <th class="table-headin">
-                                    
-                                Max num that can be booked
-                                    
-                                </th>
-                                
-                                <th class="table-headin">
-                                    
-                                    Events
-                                    
-                                </tr>
-                        </thead>
-                        <tbody>
-                        
-                            <?php
-
-                                
-                                $result= $database->query($sqlmain);
-
-                                if($result->num_rows==0){
-                                    echo '<tr>
-                                    <td colspan="4">
-                                    <br><br><br><br>
-                                    <center>
-                                    <img src="../img/notfound.svg" width="25%">
-                                    
-                                    <br>
-                                    <p class="heading-main12" style="margin-left: 45px;font-size:20px;color:rgb(49, 49, 49)">We  couldnt find anything related to your keywords !</p>
-                                    <a class="non-style-link" href="schedule.php"><button  class="login-btn btn-primary-soft btn"  style="display: flex;justify-content: center;align-items: center;margin-left:20px;">&nbsp; Show all Sessions &nbsp;</font></button>
-                                    </a>
-                                    </center>
-                                    <br><br><br><br>
-                                    </td>
-                                    </tr>';
-                                    
-                                }
-                                else{
-                                for ( $x=0; $x<$result->num_rows;$x++){
-                                    $row=$result->fetch_assoc();
-                                    $scheduleid=$row["scheduleid"];
-                                    $title=$row["title"];
-                                    $docname=$row["docname"];
-                                    $scheduledate=$row["scheduledate"];
-                                    $scheduletime=$row["scheduletime"];
-                                    $nop=$row["nop"];
-                                    echo '<tr>
-                                        <td> &nbsp;'.
-                                        substr($title,0,30)
-                                        .'</td>
-                                        
-                                        <td style="text-align:center;">
-                                            '.substr($scheduledate,0,10).' '.substr($scheduletime,0,5).'
-                                        </td>
-                                        <td style="text-align:center;">
-                                            '.$nop.'
-                                        </td>
-
-                                        <td>
-                                        <div style="display:flex;justify-content: center;">
-                                        
-                                        <a href="?action=view&id='.$scheduleid.'" class="non-style-link"><button  class="btn-primary-soft btn button-icon btn-view"  style="padding-left: 40px;padding-top: 12px;padding-bottom: 12px;margin-top: 10px;"><font class="tn-in-text">View</font></button></a>
-                                       &nbsp;&nbsp;&nbsp;
-                                       <a href="?action=drop&id='.$scheduleid.'&name='.$title.'" class="non-style-link"><button  class="btn-primary-soft btn button-icon btn-delete"  style="padding-left: 40px;padding-top: 12px;padding-bottom: 12px;margin-top: 10px;"><font class="tn-in-text">Cancel Session</font></button></a>
-                                        </div>
-                                        </td>
-                                    </tr>';
-                                    
-                                }
-                            }
-                                 
-                            ?>
- 
-                            </tbody>
-
-                        </table>
+                            <div class="action-buttons">
+                                <a href="edit-schedule.php?id=<?php echo $row['scheduleid']; ?>" class="btn-action btn-primary-soft">
+                                    <i class='bx bx-edit'></i> Edit
+                                </a>
+                                <a href="#" onclick="if(confirm('Are you sure you want to delete this session?')) 
+                                                   window.location.href='delete-session.php?id=<?php echo $row['scheduleid']; ?>'" 
+                                   class="btn-action btn-danger-soft">
+                                    <i class='bx bx-trash'></i> Delete
+                                </a>
+                            </div>
                         </div>
-                        </center>
-                   </td> 
-                </tr>
-                       
-                        
-                        
-            </table>
+                    <?php endwhile; ?>
+                </div>
+            <?php else: ?>
+                <div class="empty-state">
+                    <i class='bx bx-calendar-x'></i>
+                    <p>No sessions scheduled yet</p>
+                </div>
+            <?php endif; ?>
         </div>
-    </div>
-    <?php
-    
-    if($_GET){
-        $id=$_GET["id"];
-        $action=$_GET["action"];
-        if($action=='drop'){
-            $nameget=$_GET["name"];
-            echo '
-            <div id="popup1" class="overlay">
-                    <div class="popup">
-                    <center>
-                        <h2>Are you sure?</h2>
-                        <a class="close" href="schedule.php">&times;</a>
-                        <div class="content">
-                            You want to delete this record<br>('.substr($nameget,0,40).').
-                            
-                        </div>
-                        <div style="display: flex;justify-content: center;">
-                        <a href="delete-session.php?id='.$id.'" class="non-style-link"><button  class="btn-primary btn"  style="display: flex;justify-content: center;align-items: center;margin:10px;padding:10px;"<font class="tn-in-text">&nbsp;Yes&nbsp;</font></button></a>&nbsp;&nbsp;&nbsp;
-                        <a href="schedule.php" class="non-style-link"><button  class="btn-primary btn"  style="display: flex;justify-content: center;align-items: center;margin:10px;padding:10px;"><font class="tn-in-text">&nbsp;&nbsp;No&nbsp;&nbsp;</font></button></a>
-
-                        </div>
-                    </center>
-            </div>
-            </div>
-            '; 
-        }elseif($action=='view'){
-            $sqlmain= "select schedule.scheduleid,schedule.title,doctor.docname,schedule.scheduledate,schedule.scheduletime,schedule.nop from schedule inner join doctor on schedule.docid=doctor.docid  where  schedule.scheduleid=$id";
-            $result= $database->query($sqlmain);
-            $row=$result->fetch_assoc();
-            $docname=$row["docname"];
-            $scheduleid=$row["scheduleid"];
-            $title=$row["title"];
-            $scheduledate=$row["scheduledate"];
-            $scheduletime=$row["scheduletime"];
-            
-           
-            $nop=$row['nop'];
-
-
-            $sqlmain12= "select * from appointment inner join patient on patient.pid=appointment.pid inner join schedule on schedule.scheduleid=appointment.scheduleid where schedule.scheduleid=$id;";
-            $result12= $database->query($sqlmain12);
-            echo '
-            <div id="popup1" class="overlay">
-                    <div class="popup" style="width: 70%;">
-                    <center>
-                        <h2></h2>
-                        <a class="close" href="schedule.php">&times;</a>
-                        <div class="content">
-                            
-                            
-                        </div>
-                        <div class="abc scroll" style="display: flex;justify-content: center;">
-                        <table width="80%" class="sub-table scrolldown add-doc-form-container" border="0">
-                        
-                            <tr>
-                                <td>
-                                    <p style="padding: 0;margin: 0;text-align: left;font-size: 25px;font-weight: 500;">View Details.</p><br><br>
-                                </td>
-                            </tr>
-                            
-                            <tr>
-                                
-                                <td class="label-td" colspan="2">
-                                    <label for="name" class="form-label">Session Title: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    '.$title.'<br><br>
-                                </td>
-                                
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="Email" class="form-label">Doctor of this session: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                '.$docname.'<br><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="nic" class="form-label">Scheduled Date: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                '.$scheduledate.'<br><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="Tele" class="form-label">Scheduled Time: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                '.$scheduletime.'<br><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="spec" class="form-label"><b>patient that Already registerd for this session:</b> ('.$result12->num_rows."/".$nop.')</label>
-                                    <br><br>
-                                </td>
-                            </tr>
-
-                            
-                            <tr>
-                            <td colspan="4">
-                                <center>
-                                 <div class="abc scroll">
-                                 <table width="100%" class="sub-table scrolldown" border="0">
-                                 <thead>
-                                 <tr>   
-                                        <th class="table-headin">
-                                              Patient ID
-                                         </th>
-                                         <th class="table-headin">
-                                              Patient name
-                                         </th>
-                                         <th class="table-headin">
-                                             
-                                             Appointment number
-                                             
-                                         </th>
-                                        
-                                         
-                                         <th class="table-headin">
-                                              Patient Telephone
-                                         </th>
-                                         
-                                 </thead>
-                                 <tbody>';
-                                 
-                
-                
-                                         
-                                         $result= $database->query($sqlmain12);
-                
-                                         if($result->num_rows==0){
-                                             echo '<tr>
-                                             <td colspan="7">
-                                             <br><br><br><br>
-                                             <center>
-                                             <img src="../img/notfound.svg" width="25%">
-                                             
-                                             <br>
-                                             <p class="heading-main12" style="margin-left: 45px;font-size:20px;color:rgb(49, 49, 49)">We  couldnt find anything related to your keywords !</p>
-                                             <a class="non-style-link" href="appointment.php"><button  class="login-btn btn-primary-soft btn"  style="display: flex;justify-content: center;align-items: center;margin-left:20px;">&nbsp; Show all Appointments &nbsp;</font></button>
-                                             </a>
-                                             </center>
-                                             <br><br><br><br>
-                                             </td>
-                                             </tr>';
-                                             
-                                         }
-                                         else{
-                                         for ( $x=0; $x<$result->num_rows;$x++){
-                                             $row=$result->fetch_assoc();
-                                             $apponum=$row["apponum"];
-                                             $pid=$row["pid"];
-                                             $pname=$row["pname"];
-                                             $ptel=$row["ptel"];
-                                             
-                                             echo '<tr style="text-align:center;">
-                                                <td>
-                                                '.substr($pid,0,15).'
-                                                </td>
-                                                 <td style="font-weight:600;padding:25px">'.
-                                                 
-                                                 substr($pname,0,25)
-                                                 .'</td >
-                                                 <td style="text-align:center;font-size:23px;font-weight:500; color: var(--btnnicetext);">
-                                                 '.$apponum.'
-                                                 
-                                                 </td>
-                                                 <td>
-                                                 '.substr($ptel,0,25).'
-                                                 </td>
-                                                 
-                                                 
-                
-                                                 
-                                             </tr>';
-                                             
-                                         }
-                                     }
-                                          
-                                     
-                
-                                    echo '</tbody>
-                
-                                 </table>
-                                 </div>
-                                 </center>
-                            </td> 
-                         </tr>
-
-                        </table>
-                        </div>
-                    </center>
-                    <br><br>
-            </div>
-            </div>
-            ';  
-    }
-}
-
-    ?>
-    </div>
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

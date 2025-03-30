@@ -1,539 +1,275 @@
 <?php
+session_start();
+if (!isset($_SESSION["user"]) || $_SESSION["usertype"] != 'p') {
+    header("location: ../login.php");
+    exit;
+}
 
-    session_start();
+include("../connection.php");
 
-    if(isset($_SESSION["user"])){
-        if(($_SESSION["user"])=="" or $_SESSION['usertype']!='p'){
-            header("location: ../login.php");
-        }else{
-            $useremail=$_SESSION["user"];
-        }
+// Get patient ID
+$email = $_SESSION["user"];
+$result = $database->query("SELECT pid FROM patient WHERE pemail='$email'");
+if ($result && $result->num_rows > 0) {
+    $row = $result->fetch_assoc();
+    $pid = $row['pid'];
+} else {
+    die("Error: Patient not found");
+}
 
-    }else{
-        header("location: ../login.php");
-    }
-    
-    include("patient_header_info.php");
-	
-	include("patient_header.php");
-    
+// Get specialty filter if any
+$specialty_filter = isset($_GET['specialty']) ? $_GET['specialty'] : '';
+
+// Get all doctors with their available slots
+$query = "SELECT d.*, s.name as specialty_name,
+          COUNT(DISTINCT CASE 
+              WHEN s2.scheduledate >= CURDATE() 
+              AND s2.scheduledate <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+              AND a.scheduleid IS NULL 
+              THEN s2.scheduleid 
+          END) as available_slots,
+          MIN(CASE 
+              WHEN s2.scheduledate >= CURDATE() 
+              AND a.scheduleid IS NULL 
+              THEN s2.scheduledate 
+          END) as next_available
+          FROM doctor d 
+          LEFT JOIN specialties s ON d.specialties = s.id
+          LEFT JOIN schedule s2 ON d.docid = s2.docid
+          LEFT JOIN appointment a ON s2.scheduleid = a.scheduleid
+          GROUP BY d.docid 
+          ORDER BY d.docname";
+
+if ($specialty_filter) {
+    $query .= " WHERE d.specialties LIKE ?";
+}
+
+$stmt = $database->prepare($query);
+if ($specialty_filter) {
+    $specialty_param = "%$specialty_filter%";
+    $stmt->bind_param("s", $specialty_param);
+}
+$stmt->execute();
+$result = $stmt->get_result();
 ?>
-<section class="breadcrumbs">
-    <div class="container">
-        <div class="dash-body">
-            <table border="0" width="100%" style=" border-spacing: 0;margin:0;padding:0;margin-top:25px; ">
-                <tr >
-                    <td width="13%">
-                        <a href="doctors.php" ><button  class="login-btn btn-primary-soft btn btn-icon-back"  style="padding-top:11px;padding-bottom:11px;margin-left:20px;width:125px"><font class="tn-in-text">Back</font></button></a>
-                    </td>
-                    <td>
-                        
-                        <form action="" method="post" class="header-search" style="margin-top: 0px; display: flex;">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Our Doctors - MindCheck</title>
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link rel="stylesheet" href="../css/main.css">
+    <style>
+        .doctors-container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        .doctors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 30px;
+        }
+        .doctor-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .doctor-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.12);
+        }
+        .doctor-header {
+            padding: 20px;
+            background: linear-gradient(45deg, #1977cc, #3291e6);
+            color: white;
+        }
+        .doctor-name {
+            font-size: 1.4em;
+            margin: 0;
+            font-weight: 600;
+        }
+        .doctor-specialty {
+            margin: 5px 0 0;
+            opacity: 0.9;
+            font-size: 0.95em;
+        }
+        .doctor-body {
+            padding: 20px;
+        }
+        .info-section {
+            margin-bottom: 20px;
+        }
+        .info-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            color: #555;
+        }
+        .info-item i {
+            font-size: 1.2em;
+            color: #1977cc;
+            margin-right: 10px;
+            min-width: 24px;
+        }
+        .info-item span {
+            font-size: 0.95em;
+        }
+        .availability-section {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .available {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .unavailable {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .next-available {
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn i {
+            font-size: 1.2em;
+        }
+        .btn-primary {
+            background: #1977cc;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #1565c0;
+        }
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #1977cc;
+            border: 1px solid #1977cc;
+        }
+        .btn-secondary:hover {
+            background: #e9ecef;
+        }
+        .filters {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+    <?php include("header.php"); ?>
 
-                            <input style="width: 500px;"  type="search" name="search" class="input-text header-searchbar" placeholder="Search Doctor name or Email" list="doctors">&nbsp;&nbsp;
-                            
-                            <?php
-                                echo '<datalist id="doctors">';
-                                $list11 = $database->query("select  docname,docemail from  doctor;");
+    <div class="doctors-container">
+        <h1>Our Mental Health Specialists</h1>
+        <p>Book an appointment with our experienced mental health professionals</p>
 
-                                for ($y=0;$y<$list11->num_rows;$y++){
-                                    $row00=$list11->fetch_assoc();
-                                    $d=$row00["docname"];
-                                    $c=$row00["docemail"];
-                                    echo "<option value='$d'><br/>";
-                                    echo "<option value='$c'><br/>";
-                                };
-
-                            echo '</datalist>';?>
-                            
-                       
-                            <input type="Submit" value="Search" class="login-btn btn-primary btn" style="padding-left: 25px;padding-right: 25px;padding-top: 10px;padding-bottom: 10px;">
-                        
-                        </form>
-                        
-                    </td>
-                    <td width="15%">
-                        <p style="font-size: 14px;color: rgb(119, 119, 119);padding: 0;margin: 0;text-align: right;">
-                            Today's Date
-                        </p>
-                        <p class="heading-sub12" style="padding: 0;margin: 0; margin-left: 70px;">
-                            <?php 
-                        date_default_timezone_set('Asia/Karachi');
-
-                        $date = date('Y-m-d');
-                        echo $date;
-                        ?>
-                        </p>
-                    </td>
-                    <td width="10%">
-                        <button  class="btn-label"  style="display: flex;justify-content: center;align-items: center;"><img src="../img/calendar.svg" width="100%"></button>
-                    </td>
-
-
-                </tr>
-               
-                
-                <tr>
-                    <td colspan="4" style="padding-top:10px;">
-                        <p class="heading-main12" style="margin-left: 45px;font-size:18px;color:rgb(49, 49, 49)">All doctors (<?php echo $list11->num_rows; ?>)</p>
-                    </td>
-                    
-                </tr>
-                <?php
-                    if($_POST){
-                        $keyword=$_POST["search"];
-                        
-                        $sqlmain= "select * from doctor where docemail='$keyword' or docname='$keyword' or docname like '$keyword%' or docname like '%$keyword' or docname like '%$keyword%'";
-                    }else{
-                        $sqlmain= "select * from doctor order by docid desc";
-
-                    }
-
-
-
-                ?>
-                  
-                <tr>
-                   <td colspan="4">
-                       <center>
-                        <div class="abc scroll">
-                        <table width="93%" class="sub-table scrolldown" border="0">
-                        <thead>
-                        <tr>
-                                <th class="table-headin">
-                                    
-                                
-                                Doctor Name
-                                
-                                </th>
-                                <th class="table-headin">
-                                    Email
-                                </th>
-                                <th class="table-headin">
-                                    
-                                    Specialties
-                                    
-                                </th>
-                                <th class="table-headin">
-                                    
-                                    Events
-                                    
-                                </tr>
-                        </thead>
-                        <tbody>
-                        
-                            <?php
-
-                                
-                                $result= $database->query($sqlmain);
-
-                                if($result->num_rows==0){
-                                    echo '<tr>
-                                    <td colspan="4">
-                                    <br><br><br><br>
-                                    <center>
-                                    <img src="../img/notfound.svg" width="25%">
-                                    
-                                    <br>
-                                    <p class="heading-main12" style="margin-left: 45px;font-size:20px;color:rgb(49, 49, 49)">We  couldnt find anything related to your keywords !</p>
-                                    <a class="non-style-link" href="doctors.php"><button  class="login-btn btn-primary-soft btn"  style="display: flex;justify-content: center;align-items: center;margin-left:20px;">&nbsp; Show all Doctors &nbsp;</font></button>
-                                    </a>
-                                    </center>
-                                    <br><br><br><br>
-                                    </td>
-                                    </tr>';
-                                    
-                                }
-                                else{
-                                for ( $x=0; $x<$result->num_rows;$x++){
-                                    $row=$result->fetch_assoc();
-                                    $docid=$row["docid"];
-                                    $name=$row["docname"];
-                                    $email=$row["docemail"];
-                                    $spe=$row["specialties"];
-                                    $spcil_res= $database->query("select sname from specialties where id='$spe'");
-                                    $spcil_array= $spcil_res->fetch_assoc();
-                                    $spcil_name=$spcil_array["sname"];
-                                    echo '<tr>
-                                        <td> &nbsp;'.
-                                        substr($name,0,30)
-                                        .'</td>
-                                        <td>
-                                        '.substr($email,0,20).'
-                                        </td>
-                                        <td>
-                                            '.substr($spcil_name,0,20).'
-                                        </td>
-
-                                        <td>
-                                        <div style="display:flex;justify-content: center;">
-                                        
-                                        <a href="?action=view&id='.$docid.'" class="non-style-link"><button  class="btn-primary-soft btn button-icon btn-view"  style="padding-left: 40px;padding-top: 12px;padding-bottom: 12px;margin-top: 10px;"><font class="tn-in-text">View</font></button></a>
-                                       &nbsp;&nbsp;&nbsp;
-                                       <a href="?action=session&id='.$docid.'&name='.$name.'"  class="non-style-link"><button  class="btn-primary-soft btn button-icon menu-icon-session-active"  style="padding-left: 40px;padding-top: 12px;padding-bottom: 12px;margin-top: 10px;"><font class="tn-in-text">Sessions</font></button></a>
-                                        </div>
-                                        </td>
-                                    </tr>';
-                                    
-                                }
-                            }
-                                 
-                            ?>
- 
-                            </tbody>
-
-                        </table>
-                        </div>
-                        </center>
-                   </td> 
-                </tr>
-                       
-                        
-                        
-            </table>
+        <?php if ($specialty_filter): ?>
+        <div class="filters">
+            <a href="doctors.php" class="filter-btn">All Specialists</a>
+            <span class="filter-btn active"><?php echo htmlspecialchars($specialty_filter); ?></span>
         </div>
+        <?php endif; ?>
+
+        <?php if ($result && $result->num_rows > 0): ?>
+        <div class="doctors-grid">
+            <?php while($doctor = $result->fetch_assoc()): ?>
+            <div class="doctor-card">
+                <div class="doctor-header">
+                    <h2 class="doctor-name">Dr. <?php echo $doctor['docname']; ?></h2>
+                    <p class="doctor-specialty"><?php echo $doctor['specialty_name']; ?></p>
+                </div>
+                <div class="doctor-body">
+                    <div class="info-section">
+                        <div class="info-item">
+                            <i class='bx bx-medal'></i>
+                            <span><?php echo $doctor['docexp']; ?> years of experience</span>
+                        </div>
+                        <div class="info-item">
+                            <i class='bx bx-phone'></i>
+                            <span><?php echo $doctor['doctel']; ?></span>
+                        </div>
+                        <div class="info-item">
+                            <i class='bx bx-envelope'></i>
+                            <span><?php echo $doctor['docemail']; ?></span>
+                        </div>
+                    </div>
+
+                    <?php if ($doctor['available_slots'] > 0): ?>
+                    <div class="availability-section available">
+                        <i class='bx bx-calendar-check'></i>
+                        <strong><?php echo $doctor['available_slots']; ?> available slots</strong>
+                        <div class="next-available">Next available: <?php echo date('F j', strtotime($doctor['next_available'])); ?></div>
+                    </div>
+                    <?php else: ?>
+                    <div class="availability-section unavailable">
+                        <i class='bx bx-calendar-x'></i>
+                        <strong>No available slots</strong>
+                        <?php if ($doctor['next_available']): ?>
+                        <div class="next-available">Next available after: <?php echo date('F j', strtotime($doctor['next_available'])); ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+
+                    <div class="action-buttons">
+                        <?php if ($doctor['available_slots'] > 0): ?>
+                        <a href="book-appointment.php?docid=<?php echo $doctor['docid']; ?>" class="btn btn-primary">
+                            <i class='bx bx-calendar-plus'></i>
+                            Book Now
+                        </a>
+                        <?php else: ?>
+                        <a href="contact.php" class="btn btn-primary">
+                            <i class='bx bx-bell'></i>
+                            Notify Me
+                        </a>
+                        <?php endif; ?>
+                        <a href="doctor-profile.php?id=<?php echo $doctor['docid']; ?>" class="btn btn-secondary">
+                            <i class='bx bx-user'></i>
+                            Profile
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <?php endwhile; ?>
+        </div>
+        <?php else: ?>
+        <div class="no-results">
+            <i class='bx bx-search-alt'></i>
+            <h2>No doctors found</h2>
+            <?php if ($specialty_filter): ?>
+            <p>No doctors available for <?php echo htmlspecialchars($specialty_filter); ?> at the moment.</p>
+            <a href="doctors.php" class="btn-book">View All Doctors</a>
+            <?php else: ?>
+            <p>Please try again later or contact us for assistance.</p>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
     </div>
-    <?php 
-    if($_GET){
-        
-        $id=$_GET["id"];
-        $action=$_GET["action"];
-        if(isset($action)=='drop'){
-            $nameget=isset($_GET["name"]) ? $_GET["name"] : "";
-            echo '
-            <div id="popup1" class="overlay">
-                    <div class="popup">
-                    <center>
-                        <h2>Are you sure?</h2>
-                        <a class="close" href="doctors.php">&times;</a>
-                        <div class="content">
-                            You want to delete this record<br>('.substr($nameget,0,40).').
-                            
-                        </div>
-                        <div style="display: flex;justify-content: center;">
-                        <a href="delete-doctors.php?id='.$id.'" class="non-style-link"><button  class="btn-primary btn"  style="display: flex;justify-content: center;align-items: center;margin:10px;padding:10px;"<font class="tn-in-text">&nbsp;Yes&nbsp;</font></button></a>&nbsp;&nbsp;&nbsp;
-                        <a href="doctors.php" class="non-style-link"><button  class="btn-primary btn"  style="display: flex;justify-content: center;align-items: center;margin:10px;padding:10px;"><font class="tn-in-text">&nbsp;&nbsp;No&nbsp;&nbsp;</font></button></a>
-
-                        </div>
-                    </center>
-            </div>
-            </div>
-            ';
-        }elseif($action=='view'){
-            $sqlmain= "select * from doctor where docid='$id'";
-            $result= $database->query($sqlmain);
-            $row=$result->fetch_assoc();
-            $name=$row["docname"];
-            $email=$row["docemail"];
-            $spe=$row["specialties"];
-            
-            $spcil_res= $database->query("select sname from specialties where id='$spe'");
-            $spcil_array= $spcil_res->fetch_assoc();
-            $spcil_name=$spcil_array["sname"];
-            $nic=$row['docnic'];
-            $tele=$row['doctel'];
-            echo '
-            <div id="popup1" class="overlay">
-                    <div class="popup">
-                    <center>
-                        <h2></h2>
-                        <a class="close" href="doctors.php">&times;</a>
-                        <div class="content">
-                            eDoc Web App<br>
-                            
-                        </div>
-                        <div style="display: flex;justify-content: center;">
-                        <table width="80%" class="sub-table scrolldown add-doc-form-container" border="0">
-                        
-                            <tr>
-                                <td>
-                                    <p style="padding: 0;margin: 0;text-align: left;font-size: 25px;font-weight: 500;">View Details.</p><br><br>
-                                </td>
-                            </tr>
-                            
-                            <tr>
-                                
-                                <td class="label-td" colspan="2">
-                                    <label for="name" class="form-label">Name: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    '.$name.'<br><br>
-                                </td>
-                                
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="Email" class="form-label">Email: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                '.$email.'<br><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="nic" class="form-label">NIC: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                '.$nic.'<br><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="Tele" class="form-label">Telephone: </label>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                '.$tele.'<br><br>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="label-td" colspan="2">
-                                    <label for="spec" class="form-label">Specialties: </label>
-                                    
-                                </td>
-                            </tr>
-                            <tr>
-                            <td class="label-td" colspan="2">
-                            '.$spcil_name.'<br><br>
-                            </td>
-                            </tr>
-                            <tr>
-                                <td colspan="2">
-                                    <a href="doctors.php"><input type="button" value="OK" class="login-btn btn-primary-soft btn" ></a>
-                                
-                                    
-                                </td>
-                
-                            </tr>
-                           
-
-                        </table>
-                        </div>
-                    </center>
-                    <br><br>
-            </div>
-            </div>
-            ';
-        }elseif($action=='session'){
-            $name=$_GET["name"];
-            echo '
-            <div id="popup1" class="overlay">
-                    <div class="popup">
-                    <center>
-                        <h2>Redirect to Doctors sessions?</h2>
-                        <a class="close" href="doctors.php">&times;</a>
-                        <div class="content">
-                            You want to view All sessions by <br>('.substr($name,0,40).').
-                            
-                        </div>
-                        <form action="schedule.php" method="post" style="display: flex">
-
-                                <input type="hidden" name="search" value="'.$name.'">
-
-                                
-                        <div style="display: flex;justify-content:center;margin-left:45%;margin-top:6%;;margin-bottom:6%;">
-                        
-                        <input type="submit"  value="Yes" class="btn-primary btn"   >
-                        
-                        
-                        </div>
-                    </center>
-            </div>
-            </div>
-            ';
-        }
-        }elseif(isset($action)=='edit'){
-            $sqlmain= "select * from doctor where docid='$id'";
-            $result= $database->query($sqlmain);
-            $row=$result->fetch_assoc();
-            $name=$row["docname"];
-            $email=$row["docemail"];
-            $spe=$row["specialties"];
-            
-            $spcil_res= $database->query("select sname from specialties where id='$spe'");
-            $spcil_array= $spcil_res->fetch_assoc();
-            $spcil_name=$spcil_array["sname"];
-            $nic=$row['docnic'];
-            $tele=$row['doctel'];
-
-            $error_1=$_GET["error"];
-                $errorlist= array(
-                    '1'=>'<label for="promter" class="form-label" style="color:rgb(255, 62, 62);text-align:center;">Already have an account for this Email address.</label>',
-                    '2'=>'<label for="promter" class="form-label" style="color:rgb(255, 62, 62);text-align:center;">Password Conformation Error! Reconform Password</label>',
-                    '3'=>'<label for="promter" class="form-label" style="color:rgb(255, 62, 62);text-align:center;"></label>',
-                    '4'=>"",
-                    '0'=>'',
-
-                );
-
-            if($error_1!='4'){
-                    echo '
-                    <div id="popup1" class="overlay">
-                            <div class="popup">
-                            <center>
-                            
-                                <a class="close" href="doctors.php">&times;</a> 
-                                <div style="display: flex;justify-content: center;">
-                                <div class="abc">
-                                <table width="80%" class="sub-table scrolldown add-doc-form-container" border="0">
-                                <tr>
-                                        <td class="label-td" colspan="2">'.
-                                            $errorlist[$error_1]
-                                        .'</td>
-                                    </tr>
-                                    <tr>
-                                        <td>
-                                            <p style="padding: 0;margin: 0;text-align: left;font-size: 25px;font-weight: 500;">Edit Doctor Details.</p>
-                                        Doctor ID : '.$id.' (Auto Generated)<br><br>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <form action="edit-doc.php" method="POST" class="add-new-form">
-                                            <label for="Email" class="form-label">Email: </label>
-                                            <input type="hidden" value="'.$id.'" name="id00">
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                        <input type="email" name="email" class="input-text" placeholder="Email Address" value="'.$email.'" required><br>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        
-                                        <td class="label-td" colspan="2">
-                                            <label for="name" class="form-label">Name: </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input type="text" name="name" class="input-text" placeholder="Doctor Name" value="'.$name.'" required><br>
-                                        </td>
-                                        
-                                    </tr>
-                                    
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="nic" class="form-label">NIC: </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input type="text" name="nic" class="input-text" placeholder="NIC Number" value="'.$nic.'" required><br>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="Tele" class="form-label">Telephone: </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input type="tel" name="Tele" class="input-text" placeholder="Telephone Number" value="'.$tele.'" required><br>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="spec" class="form-label">Choose specialties: (Current'.$spcil_name.')</label>
-                                            
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <select name="spec" id="" class="box">';
-                                                
-                
-                                                $list11 = $database->query("select  * from  specialties;");
-                
-                                                for ($y=0;$y<$list11->num_rows;$y++){
-                                                    $row00=$list11->fetch_assoc();
-                                                    $sn=$row00["sname"];
-                                                    $id00=$row00["id"];
-                                                    echo "<option value=".$id00.">$sn</option><br/>";
-                                                };
-                
-                
-                
-                                                
-                                echo     '       </select><br><br>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="password" class="form-label">Password: </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input type="password" name="password" class="input-text" placeholder="Defind a Password" required><br>
-                                        </td>
-                                    </tr><tr>
-                                        <td class="label-td" colspan="2">
-                                            <label for="cpassword" class="form-label">Conform Password: </label>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td class="label-td" colspan="2">
-                                            <input type="password" name="cpassword" class="input-text" placeholder="Conform Password" required><br>
-                                        </td>
-                                    </tr>
-                                    
-                        
-                                    <tr>
-                                        <td colspan="2">
-                                            <input type="reset" value="Reset" class="login-btn btn-primary-soft btn" >&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                                        
-                                            <input type="submit" value="Save" class="login-btn btn-primary btn">
-                                        </td>
-                        
-                                    </tr>
-                                
-      
-                                </form>
-                                    </tr>
-                                </table>
-                                </div>
-                                </div>
-                            </center>
-                            <br><br>
-                    </div>
-                    </div>
-                    ';
-        }else{
-            echo '
-                <div id="popup1" class="overlay">
-                        <div class="popup">
-                        <center>
-                        <br><br><br><br>
-                            <h2>Edit Successfully!</h2>
-                            <a class="close" href="doctors.php">&times;</a>
-                            <div class="content">
-                                
-                                
-                            </div>
-                            <div style="display: flex;justify-content: center;">
-                            
-                            <a href="doctors.php" class="non-style-link"><button  class="btn-primary btn"  style="display: flex;justify-content: center;align-items: center;margin:10px;padding:10px;"><font class="tn-in-text">&nbsp;&nbsp;OK&nbsp;&nbsp;</font></button></a>
-
-                            </div>
-                            <br><br>
-                        </center>
-                </div>
-                </div>
-    ';
-
-        }; 
-    };
-
-?>
-</div>
-
-</section><!-- breadcrumbs -->
-<?php include("patient_footer.php"); ?>
+</body>
+</html>
