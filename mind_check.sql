@@ -288,6 +288,75 @@ CREATE TABLE `assessment_scores` (
     FOREIGN KEY (`assessment_id`) REFERENCES `assessments`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `assessment_questions`
+--
+
+CREATE TABLE IF NOT EXISTS `assessment_questions` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `category` ENUM('social_interaction', 'communication', 'behavior_patterns', 'emotional_regulation') NOT NULL,
+    `question` TEXT NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_category` (`category`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Dumping data for table `assessment_questions`
+--
+
+INSERT INTO `assessment_questions` (`category`, `question`) VALUES
+('social_interaction', 'How does your child respond when their name is called?'),
+('social_interaction', 'Does your child make eye contact during interactions?'),
+('social_interaction', 'How does your child play with other children?'),
+('communication', 'How does your child express their needs or wants?'),
+('communication', 'Does your child use gestures to communicate?'),
+('communication', 'How is your child''s verbal communication development?'),
+('behavior_patterns', 'Does your child have any repetitive behaviors or routines?'),
+('behavior_patterns', 'How does your child handle changes in routine?'),
+('behavior_patterns', 'Does your child show unusual sensory sensitivities?'),
+('emotional_regulation', 'How does your child handle frustration?'),
+('emotional_regulation', 'Can your child recognize others'' emotions?'),
+('emotional_regulation', 'How does your child express their emotions?');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `assessment`
+--
+
+CREATE TABLE IF NOT EXISTS `assessment` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `patient_id` INT NOT NULL,
+    `doctor_id` INT,
+    `status` ENUM('pending', 'completed', 'cancelled') DEFAULT 'pending',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `completed_at` TIMESTAMP NULL,
+    FOREIGN KEY (`patient_id`) REFERENCES `patient`(`pid`),
+    FOREIGN KEY (`doctor_id`) REFERENCES `doctor`(`docid`),
+    INDEX `idx_status` (`status`),
+    INDEX `idx_patient` (`patient_id`),
+    INDEX `idx_doctor` (`doctor_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `assessment_responses`
+--
+
+CREATE TABLE IF NOT EXISTS `assessment_responses` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `assessment_id` INT NOT NULL,
+    `question_id` INT NOT NULL,
+    `response` TEXT NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`assessment_id`) REFERENCES `assessment`(`id`),
+    FOREIGN KEY (`question_id`) REFERENCES `assessment_questions`(`id`),
+    INDEX `idx_assessment` (`assessment_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
