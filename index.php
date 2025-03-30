@@ -77,24 +77,24 @@
 
           <div class="col-xl-7 col-lg-6 icon-boxes d-flex flex-column align-items-stretch justify-content-center py-5 px-lg-5">
             <h3>Learn About Us</h3>
-            <p>University of Education Taking Care: Guiding Futures, Inspiring Excellence. Our dedicated team of experienced doctors and educators is committed to nurturing the potential of our students, providing invaluable guidance, and shaping the leaders of tomorrow. Explore our journey and be a part of our mission to transform dreams into achievements."</p>
+            <p>MindCheck is more than just a platform; it’s a bridge between individuals seeking mental health care and professionals dedicated to offering support. We empower doctors to manage patient records and appointments with ease while giving patients the flexibility to access assessments, book appointments, and communicate with their healthcare providers securely. Our goal is to enhance the mental health experience, ensuring a better and more supportive path to wellness.</p>
 
             <div class="icon-box">
               <div class="icon"><i class="bx bx-fingerprint"></i></div>
-              <h4 class="title"><a href="">Privacy is Our Priority</a></h4>
-              <p class="description">"Your privacy is our priority. We are committed to safeguarding your personal information and ensuring a confidential, trust-based health experience."</p>
+              <h4 class="title"><a href="">Convenient</a></h4>
+              <p class="description">Seamlessly book appointments with trusted professionals.</p>
             </div>
 
             <div class="icon-box">
               <div class="icon"><i class="bx bx-gift"></i></div>
-              <h4 class="title"><a href="">Healing and Enpowerment of Youth</a></h4>
-              <p class="description">"You hold the power to heal, and together, we'll journey towards your inner strength and well-being."</p>
+              <h4 class="title"><a href="">Comprehensive</a></h4>
+              <p class="description">Complete mental health assessments and follow-up care.</p>
             </div>
 
             <div class="icon-box">
               <div class="icon"><i class="bx bx-atom"></i></div>
               <h4 class="title"><a href="">Track Records</a></h4>
-              <p class="description">"Efficient record tracking empowers our patient to monitor their progress, set goals, and stay accountable on their journey to success."</p>
+              <p class="description">Efficient record tracking empowers our patient to monitor their child's mental health.</p>
             </div>
 
           </div>
@@ -115,24 +115,24 @@
           <div class="col-lg-4 col-md-6 d-flex align-items-stretch">
             <div class="icon-box">
               <div class="icon"><i class="fas fa-heartbeat"></i></div>
-              <h4><a href="">Health Issues</a></h4>
-              <p>"Nurturing potential, one at a time."</p>
+              <h4><a href="">Assessments</a></h4>
+              <p>Quick and thorough mental health evaluations to guide your care.</p>
             </div>
           </div>
 
           <div class="col-lg-4 col-md-6 d-flex align-items-stretch mt-4 mt-md-0">
             <div class="icon-box">
               <div class="icon"><i class="fas fa-pills"></i></div>
-              <h4><a href="">Legal Advices</a></h4>
-              <p>"Guiding you through legal complexities, one consultation when required."</p>
+              <h4><a href="">Communication</a></h4>
+              <p>Secure, confidential chat with your mental health provider.</p>
             </div>
           </div>
 
           <div class="col-lg-4 col-md-6 d-flex align-items-stretch mt-4 mt-lg-0">
             <div class="icon-box">
               <div class="icon"><i class="fas fa-hospital-user"></i></div>
-              <h4><a href="">Seminars & Webinars</a></h4>
-              <p>Seminars and Webinars conducted on basis of cases reports.</p>
+              <h4><a href="">Booking</a></h4>
+              <p>Easily schedule appointments with trusted professionals.</p>
             </div>
           </div>
 
@@ -226,9 +226,9 @@
             <div class="member d-flex align-items-start">
               <div class="pic"><img src="./patient_assets//img//doctors//m-1.jpg" class="img-fluid" alt=""></div>
               <div class="member-info">
-                <h4>Dr Muhammad Afzal</h4>
-                <span>Incharge of Student Affairs</span>
-                <p>Handels All cases of Harrasment</p>
+                <h4>Dr Jonson</h4>
+                <span>Psychiatrist</span>
+                <p>Handels All cases of Mental Health</p>
                 <div class="social">
                   <a href=""><i class="ri-twitter-fill"></i></a>
                   <a href=""><i class="ri-facebook-fill"></i></a>
@@ -243,7 +243,7 @@
             <div class="member d-flex align-items-start">
               <div class="pic"><img src="./patient_assets//img//doctors//m-2.jpg" class="img-fluid" alt=""></div>
               <div class="member-info">
-                <h4>Dr Anwar Mirza</h4>
+                <h4>Dr Tilly Smith</h4>
                 <span>Psychiatrist</span>
                 <p>Available for counseling</p>
                 <div class="social">
@@ -260,7 +260,7 @@
             <div class="member d-flex align-items-start">
               <div class="pic"><img src="./patient_assets//img//doctors//m-3.jpg" class="img-fluid" alt=""></div>
               <div class="member-info">
-                <h4>Dr Zahid Farooq</h4>
+                <h4>Dr Ryenan</h4>
                 <span>Psychiatrist</span>
                 <p>Available for counseling</p>
                 <div class="social">
@@ -277,9 +277,9 @@
             <div class="member d-flex align-items-start">
               <div class="pic"><img src="./patient_assets//img/doctors//m-4.jpg" class="img-fluid" alt=""></div>
               <div class="member-info">
-                <h4>Sharjeel Khillat</h4>
-                <span>Motivational Speaker</span>
-                <p>Available for Seminars</p>
+                <h4>Dr Will Jack</h4>
+                <span>Psychiatrist</span>
+                <p>Available for counseling</p>
                 <div class="social">
                   <a href=""><i class="ri-twitter-fill"></i></a>
                   <a href=""><i class="ri-facebook-fill"></i></a>
