@@ -115,7 +115,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     }
 
     .main-content {
-        margin-top: 80px;
+        /* margin-top: 80px; */
         padding: 2rem;
         min-height: calc(100vh - 80px);
         background: #f8f9fa;

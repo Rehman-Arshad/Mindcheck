@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
             --dark: #343a40;
         }
         .main-content {
-            margin-top: 60px;
+            margin-top: 30px !important;
             padding: 2rem;
         }
         .page-header {
@@ -261,7 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
                         </div>
                         <div class="contact-item">
                             <i class='bx bx-award'></i>
-                            <span><?php echo htmlspecialchars($userfetch['qualifications']); ?></span>
+                            <span><?php echo isset($userfetch['qualifications']) ? htmlspecialchars($userfetch['qualifications']) : 'Not specified'; ?></span>
                         </div>
                     </div>
                 </div>
@@ -293,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
                             <div class="mb-3 col-full">
                                 <label class="form-label">Qualifications</label>
                                 <textarea name="qualification" class="form-control" rows="3" 
-                                          required><?php echo htmlspecialchars($userfetch['qualifications']); ?></textarea>
+                                          required><?php echo isset($userfetch['qualifications']) ? htmlspecialchars($userfetch['qualifications']) : ''; ?></textarea>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">New Password</label>

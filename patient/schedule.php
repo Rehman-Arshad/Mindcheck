@@ -145,7 +145,7 @@ $success = isset($_GET['success']) ? $_GET['success'] : '';
     </style>
 </head>
 <body>
-    <?php include("header.php"); ?>
+    <?php include("../header.php"); ?>
 
     <div class="schedule-container">
         <h1>My Appointments</h1>

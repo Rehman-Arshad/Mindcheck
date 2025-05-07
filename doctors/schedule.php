@@ -56,7 +56,7 @@ $schedules = $stmt->get_result();
             --dark: #343a40;
         }
         .main-content {
-            margin-top: 60px;
+            margin-top: 10px;
             padding: 2rem;
         }
         .page-header {
@@ -231,38 +231,13 @@ $schedules = $stmt->get_result();
                         <h1 class="h3 mb-0">Schedule Management</h1>
                         <p class="text-muted mb-0">Manage your session schedules and appointments</p>
                     </div>
-                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addScheduleModal">
+                    <a href="add-schedule.php" class="btn btn-primary">
                         <i class='bx bx-plus'></i> Add New Session
-                    </button>
+                    </a>
                 </div>
             </div>
 
-            <div class="add-schedule-form">
-                <h4 class="mb-3">Quick Add Session</h4>
-                <form action="add-schedule.php" method="POST" class="form-grid">
-                    <div class="mb-3">
-                        <label class="form-label">Session Title</label>
-                        <input type="text" name="title" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Date</label>
-                        <input type="date" name="date" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Time</label>
-                        <input type="time" name="time" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Duration (minutes)</label>
-                        <input type="number" name="duration" class="form-control" value="30" required>
-                    </div>
-                    <div class="mb-3 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary w-100">
-                            <i class='bx bx-calendar-plus'></i> Create Session
-                        </button>
-                    </div>
-                </form>
-            </div>
+
 
             <?php if ($schedules && $schedules->num_rows > 0): ?>
                 <div class="schedule-grid">

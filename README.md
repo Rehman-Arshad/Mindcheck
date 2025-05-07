@@ -254,3 +254,9 @@ For support, email support@mindcheck.com or open an issue in the repository.
 
 ---
 Made with ❤️ by the MindCheck Team
+
+netstat -ano | findstr :3306
+taskkill /PID 6840 /F
+
+http://localhost/MindCheck/add_available_slots.php
+run this script to add slots in doctors tab

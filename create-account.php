@@ -36,7 +36,19 @@ if ($_POST) {
     $newpassword = $_POST['newpassword'];
     $cpassword = $_POST['cpassword'];
     
-    if ($newpassword == $cpassword) {
+    // Validate name (only alphabets allowed)
+    if (!preg_match("/^[a-zA-Z ]*$/", $name)) {
+        $error = '<label class="form-label" style="color:rgb(255, 62, 62); text-align:center;">Name should contain only alphabets and spaces.</label>';
+    }
+    // Validate email (must end with @gmail.com)
+    elseif (!preg_match('/^[a-zA-Z0-9._%+-]+@gmail\.com$/', $email)) {
+        $error = '<label class="form-label" style="color:rgb(255, 62, 62); text-align:center;">Email must be a valid Gmail address ending with @gmail.com</label>';
+    }
+    // Validate password confirmation
+    elseif ($newpassword != $cpassword) {
+        $error = '<label class="form-label" style="color:rgb(255, 62, 62); text-align:center;">Password confirmation does not match.</label>';
+    } 
+    else {
         $result = $database->query("SELECT * FROM webuser WHERE email='$email';");
         if ($result->num_rows == 1) {
             $error = '<label class="form-label" style="color:rgb(255, 62, 62); text-align:center;">An account with this email already exists.</label>';
@@ -50,8 +62,6 @@ if ($_POST) {
             header('Location: login.php');
             exit();
         }
-    } else {
-        $error = '<label class="form-label" style="color:rgb(255, 62, 62); text-align:center;">Password confirmation does not match.</label>';
     }
 } else {
     $error = '<label class="form-label"></label>';
@@ -70,7 +80,7 @@ if ($_POST) {
                 </tr>
                 <tr>
                     <td class="label-td" colspan="2">
-                        <label for="name" class="form-label">Full Name</label>
+                        <label for="name" class="form-label">FullL Name</label>
                     </td>
                 </tr>
                 <tr>
@@ -136,4 +146,64 @@ if ($_POST) {
 </body>
 <script src="script/jquery.min.js"></script>
 <script src="script/common.js"></script>
+<script>
+// Client-side validation
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const nameInput = document.querySelector('input[name="name"]');
+    const emailInput = document.querySelector('input[name="newemail"]');
+    
+    // Real-time validation for name field
+    nameInput.addEventListener('input', function() {
+        const nameValue = this.value;
+        const namePattern = /^[a-zA-Z ]*$/;
+        
+        if (!namePattern.test(nameValue)) {
+            this.setCustomValidity('Name should contain only alphabets and spaces');
+            this.style.borderColor = 'red';
+        } else {
+            this.setCustomValidity('');
+            this.style.borderColor = '';
+        }
+    });
+    
+    // Real-time validation for email field
+    emailInput.addEventListener('input', function() {
+        const emailValue = this.value;
+        const emailPattern = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+        
+        if (!emailPattern.test(emailValue)) {
+            this.setCustomValidity('Email must be a valid Gmail address ending with @gmail.com');
+            this.style.borderColor = 'red';
+        } else {
+            this.setCustomValidity('');
+            this.style.borderColor = '';
+        }
+    });
+    
+    // Form submission validation
+    form.addEventListener('submit', function(event) {
+        const nameValue = nameInput.value;
+        const emailValue = emailInput.value;
+        const namePattern = /^[a-zA-Z ]*$/;
+        const emailPattern = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+        
+        let isValid = true;
+        
+        if (!namePattern.test(nameValue)) {
+            nameInput.setCustomValidity('Name should contain only alphabets and spaces');
+            isValid = false;
+        }
+        
+        if (!emailPattern.test(emailValue)) {
+            emailInput.setCustomValidity('Email must be a valid Gmail address ending with @gmail.com');
+            isValid = false;
+        }
+        
+        if (!isValid) {
+            event.preventDefault();
+        }
+    });
+});
+</script>
 </html>

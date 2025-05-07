@@ -33,8 +33,17 @@ $upcoming = $stmt->get_result();
 // Get total doctors
 $total_doctors = $database->query("SELECT COUNT(*) as count FROM doctor")->fetch_assoc()['count'];
 
-// Get recent assessments
-$recent_assessments = $database->query("SELECT * FROM assessments WHERE patient_id = $pid ORDER BY created_at DESC LIMIT 3");
+// Get recent assessments with their scores
+$recent_assessments_query = "SELECT a.*, 
+    (SELECT COALESCE(SUM(score), 0) FROM assessment_scores WHERE assessment_id = a.id) as total_score
+    FROM assessments a 
+    WHERE a.patient_id = ? 
+    ORDER BY a.created_at DESC LIMIT 3";
+$stmt = $database->prepare($recent_assessments_query);
+$stmt->bind_param("i", $pid);
+$stmt->execute();
+$recent_assessments = $stmt->get_result();
+
 ?>
 
 <!DOCTYPE html>

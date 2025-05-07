@@ -22,27 +22,27 @@ $specialty_filter = isset($_GET['specialty']) ? $_GET['specialty'] : '';
 
 // Get all doctors with their available slots
 $query = "SELECT d.*, s.name as specialty_name,
-          COUNT(DISTINCT CASE 
-              WHEN s2.scheduledate >= CURDATE() 
-              AND s2.scheduledate <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
-              AND a.scheduleid IS NULL 
-              THEN s2.scheduleid 
-          END) as available_slots,
-          MIN(CASE 
-              WHEN s2.scheduledate >= CURDATE() 
-              AND a.scheduleid IS NULL 
-              THEN s2.scheduledate 
-          END) as next_available
+          (SELECT COUNT(*) FROM schedule s3 
+           LEFT JOIN appointment a2 ON s3.scheduleid = a2.scheduleid
+           WHERE s3.docid = d.docid 
+           AND s3.scheduledate >= CURDATE() 
+           AND s3.scheduledate <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+           AND a2.scheduleid IS NULL) as available_slots,
+          (SELECT MIN(s4.scheduledate) FROM schedule s4 
+           LEFT JOIN appointment a3 ON s4.scheduleid = a3.scheduleid
+           WHERE s4.docid = d.docid 
+           AND s4.scheduledate >= CURDATE() 
+           AND a3.scheduleid IS NULL) as next_available
           FROM doctor d 
-          LEFT JOIN specialties s ON d.specialties = s.id
-          LEFT JOIN schedule s2 ON d.docid = s2.docid
-          LEFT JOIN appointment a ON s2.scheduleid = a.scheduleid
-          GROUP BY d.docid 
-          ORDER BY d.docname";
-
+          LEFT JOIN specialties s ON d.specialties = s.id";
+          
+// Add WHERE clause for specialty filter before GROUP BY
 if ($specialty_filter) {
-    $query .= " WHERE d.specialties LIKE ?";
+    $query .= " WHERE d.specialties IN (SELECT id FROM specialties WHERE name LIKE ?)";
 }
+
+// Add GROUP BY and ORDER BY after any WHERE clauses
+$query .= " GROUP BY d.docid ORDER BY d.docname";
 
 $stmt = $database->prepare($query);
 if ($specialty_filter) {
@@ -184,7 +184,7 @@ $result = $stmt->get_result();
     </style>
 </head>
 <body>
-    <?php include("header.php"); ?>
+    <?php include("../header.php"); ?>
 
     <div class="doctors-container">
         <h1>Our Mental Health Specialists</h1>
@@ -210,6 +210,10 @@ $result = $stmt->get_result();
                         <div class="info-item">
                             <i class='bx bx-medal'></i>
                             <span><?php echo $doctor['docexp']; ?> years of experience</span>
+                        </div>
+                        <div class="info-item">
+                            <i class='bx bx-dollar-circle'></i>
+                            <span><strong>$<?php echo number_format(isset($doctor['consultation_fee']) ? $doctor['consultation_fee'] : 50.00, 2); ?></strong> per session</span>
                         </div>
                         <div class="info-item">
                             <i class='bx bx-phone'></i>

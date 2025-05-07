@@ -36,13 +36,13 @@ try {
             a.*,
             p.pname,
             p.pemail,
-            p.age,
-            (SELECT COUNT(*) FROM appointment WHERE pid = p.pid AND docid = ?) as visit_count
+            (SELECT COUNT(*) FROM appointment a2 JOIN schedule s2 ON a2.scheduleid = s2.scheduleid WHERE a2.pid = p.pid AND s2.docid = ?) as visit_count
         FROM appointment a 
         INNER JOIN patient p ON a.pid = p.pid 
-        WHERE a.docid = ? 
-        AND a.appodate = ? 
-        ORDER BY a.appotime ASC
+        INNER JOIN schedule s ON a.scheduleid = s.scheduleid
+        WHERE s.docid = ? 
+        AND s.scheduledate = ? 
+        ORDER BY s.scheduletime ASC
     ";
     $stmt = $database->prepare($today_appointments_query);
     if (!$stmt) {
@@ -56,11 +56,12 @@ try {
     $recent_patients_query = "
         SELECT 
             p.*,
-            MAX(a.appodate) as last_visit,
-            COUNT(DISTINCT a.apid) as total_visits
+            MAX(s.scheduledate) as last_visit,
+            COUNT(DISTINCT a.appoid) as total_visits
         FROM patient p
         INNER JOIN appointment a ON p.pid = a.pid
-        WHERE a.docid = ?
+        INNER JOIN schedule s ON a.scheduleid = s.scheduleid
+        WHERE s.docid = ?
         GROUP BY p.pid
         ORDER BY last_visit DESC
         LIMIT 5
@@ -78,7 +79,7 @@ try {
     $upcoming_schedule_query = "
         SELECT 
             s.*,
-            COUNT(a.apid) as booked_count,
+            COUNT(a.appoid) as booked_count,
             GROUP_CONCAT(p.pname SEPARATOR ', ') as patient_names
         FROM schedule s 
         LEFT JOIN appointment a ON s.scheduleid = a.scheduleid 
@@ -101,7 +102,8 @@ try {
         SELECT COUNT(DISTINCT p.pid) as count 
         FROM patient p 
         INNER JOIN appointment a ON p.pid = a.pid 
-        WHERE a.docid = ?
+        INNER JOIN schedule s ON a.scheduleid = s.scheduleid
+        WHERE s.docid = ?
     ";
     $stmt = $database->prepare($total_patients_query);
     if (!$stmt) {
@@ -117,10 +119,11 @@ try {
     $month_end = date('Y-m-t');
     $monthly_stats_query = "
         SELECT COUNT(*) as count
-        FROM appointment 
-        WHERE docid = ? 
-        AND appodate BETWEEN ? AND ?
-        AND status = 1
+        FROM appointment a
+        JOIN schedule s ON a.scheduleid = s.scheduleid
+        WHERE s.docid = ? 
+        AND s.scheduledate BETWEEN ? AND ?
+        AND (a.status = 'confirmed' OR a.status = 1)
     ";
     $stmt = $database->prepare($monthly_stats_query);
     if (!$stmt) {
@@ -134,8 +137,9 @@ try {
     // Get pending appointments
     $pending_query = "
         SELECT COUNT(*) as count 
-        FROM appointment 
-        WHERE docid = ? AND status = 0
+        FROM appointment a
+        JOIN schedule s ON a.scheduleid = s.scheduleid
+        WHERE s.docid = ? AND (a.status = 'pending' OR a.status = 0)
     ";
     $stmt = $database->prepare($pending_query);
     if (!$stmt) {
@@ -185,7 +189,7 @@ try {
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .main-content {
-            margin-top: 80px;
+            margin-top: 30px;
             padding: 2rem;
         }
         .welcome-banner {
@@ -429,7 +433,7 @@ try {
                 <h1>Welcome back, Dr. <?php echo htmlspecialchars($username); ?>!</h1>
                 <p>Here's your practice overview for today, <?php echo date('F d, Y'); ?></p>
                 <div class="d-flex gap-3">
-                    <a href="appointments.php" class="btn btn-light">
+                    <a href="appointment.php" class="btn btn-light">
                         <i class='bx bx-calendar-plus'></i> New Appointment
                     </a>
                     <a href="schedule.php" class="btn btn-outline-light">
@@ -566,7 +570,7 @@ try {
                     <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h2>Recent Patients</h2>
-                            <a href="patients.php" class="btn-action btn-primary-soft">
+                            <a href="patient.php" class="btn-action btn-primary-soft">
                                 <i class='bx bx-group'></i> All Patients
                             </a>
                         </div>

@@ -207,7 +207,7 @@ $schedule_result = $stmt->get_result();
             .then(data => {
                 if (data.success) {
                     alert('Appointment booked successfully!');
-                    window.location.href = 'appointments.php';
+                    window.location.href = data.redirect || 'appointment.php';
                 } else {
                     alert(data.message || 'Failed to book appointment. Please try again.');
                 }

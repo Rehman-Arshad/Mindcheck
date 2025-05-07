@@ -56,7 +56,7 @@ try {
     // Commit transaction
     $database->commit();
     
-    echo json_encode(['success' => true, 'message' => 'Appointment booked successfully']);
+    echo json_encode(['success' => true, 'message' => 'Appointment booked successfully', 'redirect' => 'appointment.php']);
 
 } catch (Exception $e) {
     // Rollback on error
